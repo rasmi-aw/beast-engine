@@ -28,4 +28,12 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <!--Push to GitHub packages-->
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub OWNER Apache Maven Packages</name>
+            <url>https://maven.pkg.github.com/rasmi-aw/beast-engine</url>
+        </repository>
+    </distributionManagement>
 </project>
