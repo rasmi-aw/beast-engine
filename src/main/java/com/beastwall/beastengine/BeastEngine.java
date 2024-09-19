@@ -8,12 +8,17 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * BeastEngine is an abstract base class for template processing engines.
@@ -40,6 +45,24 @@ public abstract class BeastEngine {
         ScriptEngineManager manager = new ScriptEngineManager();
         return manager.getEngineByName("nashorn");
     });
+
+    static {
+        try {
+            URL resourceFolderUrl = BeastEngine.class.getClassLoader().getResource("components");
+            if (resourceFolderUrl == null) {
+                throw new IllegalArgumentException("Resource folder not found: " + "components");
+            }
+
+            Path resourceFolderPath = Paths.get(resourceFolderUrl.toURI());
+
+            try (Stream<Path> paths = Files.walk(resourceFolderPath)) {
+                paths.filter(Files::isRegularFile)
+                        .forEach(System.out::println);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
 
     /**
