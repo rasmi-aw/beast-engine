@@ -51,6 +51,7 @@ public abstract class BeastEngine {
 
     /**
      * Constructor with custom components path.
+     *
      * @param componentsPath The path to the components directory.
      */
     public BeastEngine(String componentsPath) {
@@ -80,6 +81,7 @@ public abstract class BeastEngine {
 
     /**
      * Get the file extension for component files.
+     *
      * @return The file extension string.
      */
     abstract String componentExtension();
@@ -94,7 +96,7 @@ public abstract class BeastEngine {
         String result = components.get(name + ".component" + componentExtension());
         if (result == null) {
             String path = getComponentPath() + name + "/" + name + ".component" + componentExtension();
-            try (InputStream inputStream = getClass().getResourceAsStream(path);
+            try (InputStream inputStream = name.getClass().getResourceAsStream(path);
                  BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
                 result = reader.lines().collect(Collectors.joining(System.lineSeparator()));
                 components.put(name + ".component" + componentExtension(), result);
@@ -107,6 +109,7 @@ public abstract class BeastEngine {
 
     /**
      * Get the path to component files.
+     *
      * @return The component path string.
      */
     abstract String getComponentPath();
@@ -114,6 +117,7 @@ public abstract class BeastEngine {
 
     /**
      * Capitalize the first letter of a string.
+     *
      * @param s The string to capitalize.
      * @return The capitalized string.
      */
@@ -131,8 +135,9 @@ public abstract class BeastEngine {
 
     /**
      * Replace variables in an expression with their values from the context.
-     * @param expression The expression containing variables.
-     * @param context The context containing variable values.
+     *
+     * @param expression      The expression containing variables.
+     * @param context         The context containing variable values.
      * @param scopeIdentifier The identifier for the current scope.
      * @return The expression with variables replaced by their values.
      */
@@ -152,8 +157,9 @@ public abstract class BeastEngine {
 
     /**
      * Evaluate a conditional expression within the given context.
-     * @param expression The conditional expression to evaluate.
-     * @param context The context containing variables for evaluation.
+     *
+     * @param expression      The conditional expression to evaluate.
+     * @param context         The context containing variables for evaluation.
      * @param scopeIdentifier The identifier for the current scope.
      * @return The result of the condition evaluation.
      */
@@ -187,8 +193,9 @@ public abstract class BeastEngine {
 
     /**
      * Resolve a nested variable from the context.
-     * @param expression The variable expression to resolve.
-     * @param context The context containing variable values.
+     *
+     * @param expression      The variable expression to resolve.
+     * @param context         The context containing variable values.
      * @param scopeIdentifier The identifier for the current scope.
      * @return The resolved value of the variable.
      */
@@ -217,8 +224,9 @@ public abstract class BeastEngine {
 
     /**
      * Resolve a variable from the context.
+     *
      * @param expression The variable expression to resolve.
-     * @param context The context containing variable values.
+     * @param context    The context containing variable values.
      * @return The resolved value of the variable.
      */
     Object resolveVariable(String expression, Map<String, Object> context) {
@@ -271,8 +279,9 @@ public abstract class BeastEngine {
 
     /**
      * Resolve a variable from the context and cache the result.
-     * @param expression The variable expression to resolve.
-     * @param context The context containing variable values.
+     *
+     * @param expression      The variable expression to resolve.
+     * @param context         The context containing variable values.
      * @param scopeIdentifier The identifier for the current scope.
      * @return The resolved and cached value of the variable.
      */
@@ -284,8 +293,9 @@ public abstract class BeastEngine {
 
     /**
      * Evaluate an expression within the given context.
-     * @param expression The expression to evaluate.
-     * @param context The context containing variables for evaluation.
+     *
+     * @param expression      The expression to evaluate.
+     * @param context         The context containing variables for evaluation.
      * @param scopeIdentifier The identifier for the current scope.
      * @return The result of the expression evaluation.
      * @throws ScriptException If an error occurs during script evaluation.
@@ -300,9 +310,10 @@ public abstract class BeastEngine {
 
     /**
      * Process text by interpolating variables and expressions.
-     * @param text The text to process.
-     * @param context The context containing variables for interpolation.
-     * @param result The StringBuilder to append the processed text to.
+     *
+     * @param text            The text to process.
+     * @param context         The context containing variables for interpolation.
+     * @param result          The StringBuilder to append the processed text to.
      * @param scopeIdentifier The identifier for the current scope.
      * @throws ScriptException If an error occurs during script evaluation.
      */
