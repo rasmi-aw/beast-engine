@@ -4,23 +4,16 @@ import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * BeastEngine is an abstract base class for template processing engines.
@@ -48,28 +41,6 @@ public abstract class BeastEngine {
         return manager.getEngineByName("nashorn");
     });
 
-    public static void printAllFilesFromResources(String resourceFolderName) throws IOException, URISyntaxException, URISyntaxException {
-        URL resourceFolderUrl = BeastEngine.class.getClassLoader().getResource(resourceFolderName);
-        if (resourceFolderUrl == null) {
-            throw new IllegalArgumentException("Resource folder not found: " + resourceFolderName);
-        }
-
-        Path resourceFolderPath = Paths.get(resourceFolderUrl.toURI());
-
-        try (Stream<Path> paths = Files.walk(resourceFolderPath)) {
-            paths.filter(Files::isRegularFile)
-                    .forEach(System.out::println);
-        }
-    }
-    static {
-        try {
-            printAllFilesFromResources("components");
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        } catch (URISyntaxException e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     /**
      * Default constructor. Initializes the TEMPLATES_PATH.
@@ -123,18 +94,12 @@ public abstract class BeastEngine {
      */
     String readComponent(String name) {
         String result = components.get(name + ".component" + componentExtension());
-        System.out.println("1");
         if (result == null) {
             String path = getComponentPath(name);
-            System.out.println("2" + path);
-
-            try (InputStream inputStream = this.getClass().getResourceAsStream(path);
+            try (InputStream inputStream = name.getClass().getResourceAsStream(path);
                  BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-                System.out.println("3" + path);
                 result = reader.lines().collect(Collectors.joining(System.lineSeparator()));
-                System.out.println("4" + path);
                 components.put(name + ".component" + componentExtension(), result);
-                System.out.println("5" + path);
             } catch (Exception e) {
                 throw new RuntimeException("Error reading template: " + name, e);
             }
