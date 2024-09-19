@@ -34,6 +34,7 @@ public class BeastHtmlEngine extends BeastEngine {
                 Document doc = Jsoup.parse(t);
                 StringBuilder result = new StringBuilder();
                 context.keySet().parallelStream().forEach(k -> {
+                    System.out.println(k);
                     engine.get().put(k, context.get(k));
                 });
                 processNode(doc.child(0), context, result, "");
