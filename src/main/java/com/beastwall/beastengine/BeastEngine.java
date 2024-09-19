@@ -95,7 +95,7 @@ public abstract class BeastEngine {
     String readComponent(String name) {
         String result = components.get(name + ".component" + componentExtension());
         if (result == null) {
-            String path = getComponentPath() + name + "/" + name + ".component" + componentExtension();
+            String path = getComponentPath(name);
             try (InputStream inputStream = name.getClass().getResourceAsStream(path);
                  BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
                 result = reader.lines().collect(Collectors.joining(System.lineSeparator()));
