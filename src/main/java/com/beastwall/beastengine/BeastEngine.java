@@ -99,7 +99,7 @@ public abstract class BeastEngine {
             String path = getComponentPath(name);
             System.out.println("2" + path);
 
-            try (InputStream inputStream = name.getClass().getResourceAsStream(path);
+            try (InputStream inputStream = this.getClass().getResourceAsStream(path);
                  BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
                 System.out.println("3" + path);
                 result = reader.lines().collect(Collectors.joining(System.lineSeparator()));
