@@ -15,6 +15,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+/**
+ * BeastEngine is an abstract base class for template processing engines.
+ * It provides core functionality for template parsing, caching, and evaluation.
+ *
+ * @author github.com/rasmi-aw
+ * @author beastwall.com
+ */
 public abstract class BeastEngine {
     static final String TAG_PREFIX = "bs:";
     static String TEMPLATES_PATH;
@@ -35,11 +42,17 @@ public abstract class BeastEngine {
     });
 
 
-    // Constructor initializing the ScriptEngine for Nashorn
+    /**
+     * Default constructor. Initializes the TEMPLATES_PATH.
+     */
     public BeastEngine() {
         TEMPLATES_PATH = "/components/";
     }
 
+    /**
+     * Constructor with custom components path.
+     * @param componentsPath The path to the components directory.
+     */
     public BeastEngine(String componentsPath) {
         TEMPLATES_PATH = componentsPath;
     }
@@ -66,7 +79,8 @@ public abstract class BeastEngine {
     public abstract String processComponent(String componentName, Map<String, Object> context) throws Exception;
 
     /**
-     *
+     * Get the file extension for component files.
+     * @return The file extension string.
      */
     abstract String componentExtension();
 
@@ -91,18 +105,37 @@ public abstract class BeastEngine {
         return result;
     }
 
+    /**
+     * Get the path to component files.
+     * @return The component path string.
+     */
     abstract String getComponentPath();
 
 
+    /**
+     * Capitalize the first letter of a string.
+     * @param s The string to capitalize.
+     * @return The capitalized string.
+     */
     String capitalize(String s) {
         return s.substring(0, 1).toUpperCase() + s.substring(1);
     }
 
+    /**
+     * Clear the cache and reset the script engine.
+     */
     public void clearCache() {
         resolvedVariables.remove();
         engine.remove();
     }
 
+    /**
+     * Replace variables in an expression with their values from the context.
+     * @param expression The expression containing variables.
+     * @param context The context containing variable values.
+     * @param scopeIdentifier The identifier for the current scope.
+     * @return The expression with variables replaced by their values.
+     */
     String replaceVariablesWithValues(String expression, Map<String, Object> context, String scopeIdentifier) {
         Pattern variablePattern = Pattern.compile("\\b([a-zA-Z_][a-zA-Z0-9_.]*)\\b");
         Matcher matcher = variablePattern.matcher(expression);
@@ -117,7 +150,13 @@ public abstract class BeastEngine {
         return result.toString();
     }
 
-    // Updated evaluateCondition method for handling nested property paths and simple boolean conditions
+    /**
+     * Evaluate a conditional expression within the given context.
+     * @param expression The conditional expression to evaluate.
+     * @param context The context containing variables for evaluation.
+     * @param scopeIdentifier The identifier for the current scope.
+     * @return The result of the condition evaluation.
+     */
     boolean evaluateCondition(String expression, Map<String, Object> context, String scopeIdentifier) {
         // Check for simple boolean variable conditions
         if (expression.matches("\\b[a-zA-Z_][a-zA-Z0-9_.]*\\b")) {
@@ -146,7 +185,13 @@ public abstract class BeastEngine {
         }
     }
 
-    // Helper method to resolve nested variables
+    /**
+     * Resolve a nested variable from the context.
+     * @param expression The variable expression to resolve.
+     * @param context The context containing variable values.
+     * @param scopeIdentifier The identifier for the current scope.
+     * @return The resolved value of the variable.
+     */
     Object resolveNestedVariable(String expression, Map<String, Object> context, String scopeIdentifier) {
         String[] parts = expression.split("\\.");
         Object value = resolveVariableCached(parts[0], context, scopeIdentifier);
@@ -170,7 +215,12 @@ public abstract class BeastEngine {
         return value;
     }
 
-    // Updated resolveVariable method to handle nested property paths and boolean values
+    /**
+     * Resolve a variable from the context.
+     * @param expression The variable expression to resolve.
+     * @param context The context containing variable values.
+     * @return The resolved value of the variable.
+     */
     Object resolveVariable(String expression, Map<String, Object> context) {
         if (!Pattern.compile("^[a-zA-Z_$][a-zA-Z0-9_$]*(\\.[a-zA-Z_$][a-zA-Z0-9_$]*)*$").matcher(expression).matches()) {
             // not a variable
@@ -219,13 +269,27 @@ public abstract class BeastEngine {
         return value;
     }
 
-
+    /**
+     * Resolve a variable from the context and cache the result.
+     * @param expression The variable expression to resolve.
+     * @param context The context containing variable values.
+     * @param scopeIdentifier The identifier for the current scope.
+     * @return The resolved and cached value of the variable.
+     */
     Object resolveVariableCached(String expression, Map<String, Object> context, String scopeIdentifier) {
         Map<String, Object> cache = resolvedVariables.get();
         String cacheKey = scopeIdentifier + ":" + expression;
         return cache.computeIfAbsent(cacheKey, k -> resolveVariable(expression, context));
     }
 
+    /**
+     * Evaluate an expression within the given context.
+     * @param expression The expression to evaluate.
+     * @param context The context containing variables for evaluation.
+     * @param scopeIdentifier The identifier for the current scope.
+     * @return The result of the expression evaluation.
+     * @throws ScriptException If an error occurs during script evaluation.
+     */
     Object eval(String expression, Map<String, Object> context, String scopeIdentifier) throws ScriptException {
         Object resolved = resolveVariableCached(expression, context, scopeIdentifier);
         if (resolved == null) {
@@ -234,6 +298,14 @@ public abstract class BeastEngine {
         return resolved;
     }
 
+    /**
+     * Process text by interpolating variables and expressions.
+     * @param text The text to process.
+     * @param context The context containing variables for interpolation.
+     * @param result The StringBuilder to append the processed text to.
+     * @param scopeIdentifier The identifier for the current scope.
+     * @throws ScriptException If an error occurs during script evaluation.
+     */
     void processText(String text, Map<String, Object> context, StringBuilder result, String scopeIdentifier) throws ScriptException {
         Matcher matcher = INTERPOLATION_PATTERN.matcher(text);
         int lastIndex = 0;
