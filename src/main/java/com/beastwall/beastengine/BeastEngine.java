@@ -94,12 +94,18 @@ public abstract class BeastEngine {
      */
     String readComponent(String name) {
         String result = components.get(name + ".component" + componentExtension());
+        System.out.println("1");
         if (result == null) {
             String path = getComponentPath(name);
+            System.out.println("2" + path);
+
             try (InputStream inputStream = name.getClass().getResourceAsStream(path);
                  BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
+                System.out.println("3" + path);
                 result = reader.lines().collect(Collectors.joining(System.lineSeparator()));
+                System.out.println("4" + path);
                 components.put(name + ".component" + componentExtension(), result);
+                System.out.println("5" + path);
             } catch (Exception e) {
                 throw new RuntimeException("Error reading template: " + name, e);
             }
