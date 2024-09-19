@@ -52,10 +52,10 @@ public abstract class BeastEngine {
     /**
      * Constructor with custom components path.
      *
-     * @param componentsPath The path to the components directory.
+     * @param componentsResourceFolderName The path to the components directory.
      */
-    public BeastEngine(String componentsPath) {
-        TEMPLATES_PATH = componentsPath;
+    public BeastEngine(String componentsResourceFolderName) {
+        TEMPLATES_PATH = "/" + componentsResourceFolderName + "/";
     }
 
 
@@ -121,8 +121,6 @@ public abstract class BeastEngine {
     String getComponentPath(String name) {
         return TEMPLATES_PATH + name + "/" + name + ".component" + componentExtension();
     }
-
-    ;
 
 
     /**
