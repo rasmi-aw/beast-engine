@@ -37,9 +37,5 @@ public class BeastTextEngine extends BeastEngine {
         return ".txt";
     }
 
-    @Override
-    String getComponentPath() {
-        return TEMPLATES_PATH;
-    }
 
 }

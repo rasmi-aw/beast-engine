@@ -112,7 +112,11 @@ public abstract class BeastEngine {
      *
      * @return The component path string.
      */
-    abstract String getComponentPath();
+    String getComponentPath(String name) {
+        return TEMPLATES_PATH + name + "/" + name + ".component" + componentExtension();
+    }
+
+    ;
 
 
     /**

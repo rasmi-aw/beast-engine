@@ -232,7 +232,7 @@ public class BeastHtmlEngine extends BeastEngine {
     public String readComponent(String name) {
         String result = components.get(name);
         if (result == null) {
-            String path = TEMPLATES_PATH + name + "/" + name + ".component" + componentExtension();
+            String path = getComponentPath(name);
             try (InputStream inputStream = getClass().getResourceAsStream(path);
                  BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
                 result = reader.lines().collect(Collectors.joining(System.lineSeparator()));
@@ -244,10 +244,6 @@ public class BeastHtmlEngine extends BeastEngine {
         return result;
     }
 
-    @Override
-    public String getComponentPath() {
-        return getComponentPath();
-    }
 
     @Override
     public String componentExtension() {
