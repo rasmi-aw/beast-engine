@@ -3,9 +3,7 @@ package com.beastwall.beastengine;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -17,7 +15,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -46,30 +43,11 @@ public abstract class BeastEngine {
         return manager.getEngineByName("nashorn");
     });
 
-    static {
-        try {
-            URL resourceFolderUrl = BeastEngine.class.getClassLoader().getResource("components");
-            if (resourceFolderUrl == null) {
-                throw new IllegalArgumentException("Resource folder not found: " + "components");
-            }
-
-            Path resourceFolderPath = Paths.get(resourceFolderUrl.toURI());
-
-            try (Stream<Path> paths = Files.walk(resourceFolderPath)) {
-                paths.filter(Files::isRegularFile)
-                        .forEach(System.out::println);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-
     /**
      * Default constructor. Initializes the TEMPLATES_PATH.
      */
     public BeastEngine() {
-        TEMPLATES_PATH = "/components/";
+        this("components");
     }
 
     /**
@@ -78,9 +56,36 @@ public abstract class BeastEngine {
      * @param componentsResourceFolderName The path to the components directory.
      */
     public BeastEngine(String componentsResourceFolderName) {
-        TEMPLATES_PATH = "/" + componentsResourceFolderName + "/";
+        TEMPLATES_PATH = componentsResourceFolderName;
+        getComponents(TEMPLATES_PATH);
     }
 
+    /**
+     * get all components in app
+     */
+    void getComponents(String componentsFolderName) {
+
+        try {
+            URL resourceFolderUrl = BeastEngine.class.getClassLoader().getResource(componentsFolderName);
+            if (resourceFolderUrl == null) {
+                throw new IllegalArgumentException("Resource folder not found: " + "components");
+            }
+            Path resourceFolderPath = Paths.get(resourceFolderUrl.toURI());
+
+            try (Stream<Path> paths = Files.walk(resourceFolderPath)) {
+                paths.filter(Files::isRegularFile)
+                        .forEach(f -> {
+                            try {
+                                components.put(f.getFileName().toString(), Files.readString(f));
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
+            }
+        } catch (Exception e) {
+            new RuntimeException(e);
+        }
+    }
 
     /**
      * Process a template string with the given context.
@@ -116,29 +121,8 @@ public abstract class BeastEngine {
      * @return The contents of the template as a string.
      */
     String readComponent(String name) {
-        String result = components.get(name + ".component" + componentExtension());
-        if (result == null) {
-            String path = getComponentPath(name);
-            try (InputStream inputStream = name.getClass().getResourceAsStream(path);
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-                result = reader.lines().collect(Collectors.joining(System.lineSeparator()));
-                components.put(name + ".component" + componentExtension(), result);
-            } catch (Exception e) {
-                throw new RuntimeException("Error reading template: " + name, e);
-            }
-        }
-        return result;
+        return components.get(name + ".component" + componentExtension());
     }
-
-    /**
-     * Get the path to component files.
-     *
-     * @return The component path string.
-     */
-    String getComponentPath(String name) {
-        return TEMPLATES_PATH + name + "/" + name + ".component" + componentExtension();
-    }
-
 
     /**
      * Capitalize the first letter of a string.
