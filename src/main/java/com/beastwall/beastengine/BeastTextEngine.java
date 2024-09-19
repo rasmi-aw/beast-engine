@@ -17,9 +17,9 @@ public class BeastTextEngine extends BeastEngine {
     public String process(String template, Map<String, Object> context) throws Exception {
         //
         context.keySet().parallelStream().forEach(k -> {
-            System.out.println(k);
             engine.get().put(k, context.get(k));
         });
+        System.out.println(engine.get().get("user"));
         //
         StringBuilder builder = new StringBuilder();
         processText(template, context, builder, null);
