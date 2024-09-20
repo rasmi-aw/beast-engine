@@ -29,26 +29,30 @@ public class BeastHtmlEngine extends BeastEngine {
     @Override
     public String process(String template, Map<String, Object> context) throws Exception {
         // Check if the template is precompiled and cached
-        String output = precompiledTemplates.get().computeIfAbsent(template, t -> {
-            try {
-                Document doc = Jsoup.parse(t);
-                StringBuilder result = new StringBuilder();
-                context.keySet().parallelStream().forEach(k -> {
-                    engine.get().put(k, context.get(k));
-                });
-                processNode(doc.child(0), context, result, "");
-                return result.toString();
-            } catch (Exception e) {
-                throw new RuntimeException("Error rendering template", e);
-            }
-        });
+        String output;
+        try {
+            Document doc = Jsoup.parse(template);
+            StringBuilder result = new StringBuilder();
+            context.keySet().parallelStream().forEach(k -> {
+                engine.get().put(k, context.get(k));
+            });
+            processNode(doc.child(0), context, result, "");
+            output = result.toString();
+        } catch (Exception e) {
+            throw new RuntimeException("Error rendering template", e);
+        }
         clearCache();
         return output;
     }
 
     @Override
     public String processComponent(String componentName, Map<String, Object> context) throws Exception {
-        return process(readComponent(componentName), context);
+        String res = context.get(componentName + ".component" + componentExtension()).toString();
+        if (res == null) {
+            res = process(readComponent(componentName), context);
+            components.put(componentName + ".component" + componentExtension(), res);
+        }
+        return res;
     }
 
     // Updated processNode method for bs:if handling
@@ -192,25 +196,22 @@ public class BeastHtmlEngine extends BeastEngine {
             result = components.get(componentName);
         }
         //
-        if (result == null)
-            result = componentCache.get().computeIfAbsent(componentName, name -> {
-                try {
-                    String componentTemplate = readComponent(name);
-                    Document componentDoc = Jsoup.parse(componentTemplate);
-                    StringBuilder componentResult = new StringBuilder();
-                    for (Node child : componentDoc.body().childNodes()) {
-                        processNode(child, context, componentResult, scopeIdentifier + "_" + name);
-                    }
-                    String res = componentResult.toString();
-                    if (isStatic)
-                        components.put(componentName, res);
-                    return res;
-                } catch (Exception e) {
-                    throw new RuntimeException("Error rendering component: " + name, e);
+        if (result == null) {
+            try {
+                String componentTemplate = readComponent(componentName);
+                Document componentDoc = Jsoup.parse(componentTemplate);
+                StringBuilder componentResult = new StringBuilder();
+                for (Node child : componentDoc.body().childNodes()) {
+                    processNode(child, context, componentResult, scopeIdentifier + "_" + componentResult);
                 }
-            });
-        if (isStatic && result != null)
-            components.put(componentName, result);
+                result = componentResult.toString();
+                if (isStatic)
+                    components.put(componentName, result);
+                return result;
+            } catch (Exception e) {
+                throw new RuntimeException("Error rendering component: " + components, e);
+            }
+        }
         return result;
     }
 

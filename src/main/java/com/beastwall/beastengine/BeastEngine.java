@@ -3,19 +3,22 @@ package com.beastwall.beastengine;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * BeastEngine is an abstract base class for template processing engines.
@@ -26,12 +29,9 @@ import java.util.regex.Pattern;
  */
 public abstract class BeastEngine {
     static final String TAG_PREFIX = "bs:";
-    static String COMPONENTS_PATH;
+    static String TEMPLATES_PATH;
     static Pattern INTERPOLATION_PATTERN = Pattern.compile("\\{\\{\\s*(.*?)\\s*\\}\\}");
 
-    // Cache for precompiled templates and rendered components
-    final ThreadLocal<Map<String, String>> precompiledTemplates = ThreadLocal.withInitial(ConcurrentHashMap::new);
-    final ThreadLocal<Map<String, String>> componentCache = ThreadLocal.withInitial(ConcurrentHashMap::new);
     static final Map<String, String> components = new ConcurrentHashMap<>();
 
     // Thread-local cache for resolved variables
@@ -56,95 +56,7 @@ public abstract class BeastEngine {
      * @param componentsResourceFolderName The path to the components directory.
      */
     public BeastEngine(String componentsResourceFolderName) {
-        COMPONENTS_PATH = componentsResourceFolderName;
-        getComponents(COMPONENTS_PATH);
-    }
-
-    /**
-     * get all components in app
-     */
-    void getComponents(String componentsResourceFolderName){
-        try {
-            // Get a reference to the ClassLoader
-            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-            // Load all resources from the components folder
-            Enumeration<URL> urls = classLoader.getResources("components/");
-
-            while (urls.hasMoreElements()) {
-                URL resource = urls.nextElement();
-
-                // Check if the resource is in a JAR or the filesystem
-                if (resource.getProtocol().equals("file")) {
-                    // Resource is on the filesystem (in src/main/resources)
-                    loadComponentsFromDirectory(Paths.get(resource.toURI()).toFile());
-                } else if (resource.getProtocol().equals("jar")) {
-                    // Resource is in a JAR or WAR file
-                    String jarPath = resource.getPath().substring(5, resource.getPath().indexOf("!")); // Extract JAR file path
-                    try (JarFile jarFile = new JarFile(jarPath)) {
-                        loadComponentsFromJar(jarFile);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Error loading components: " + e.getMessage());
-        }
-    }
-
-    // Load components from a directory (dev mode)
-    private void loadComponentsFromDirectory(File directory) {
-        for (File file : directory.listFiles()) {
-            if (file.isDirectory()) {
-                loadComponentsFromDirectory(file); // Recursively load subdirectories
-            } else if (file.getName().endsWith(".component")) {
-                loadComponentFile(file);
-            }
-        }
-    }
-
-    // Load components from a JAR/WAR file (packaged mode)
-    private void loadComponentsFromJar(JarFile jarFile) throws Exception {
-        Enumeration<JarEntry> entries = jarFile.entries();
-        while (entries.hasMoreElements()) {
-            JarEntry entry = entries.nextElement();
-            if (entry.getName().startsWith("components/") && entry.getName().endsWith(".component")) {
-                try (InputStream is = jarFile.getInputStream(entry)) {
-                    loadComponentFileFromStream(entry.getName(), is);
-                }
-            }
-        }
-    }
-
-    // Load a component file from the filesystem
-    private void loadComponentFile(File file) {
-        try (InputStream is = file.toURI().toURL().openStream()) {
-            loadComponentFileFromStream(file.getName(), is);
-        } catch (Exception e) {
-            System.err.println("Error loading component from file: " + file.getName() + " - " + e.getMessage());
-        }
-    }
-
-    // Load a component file from an InputStream
-    private void loadComponentFileFromStream(String fileName, InputStream is) {
-        String componentName = fileName.substring(fileName.lastIndexOf("/") + 1).replace(".component", "");
-
-        // Read the content of the file
-        StringBuilder content = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                content.append(line).append("\n");
-            }
-        } catch (Exception e) {
-            System.err.println("Error reading component content: " + componentName + " - " + e.getMessage());
-        }
-
-        // Store the component in the components map
-        components.put(componentName, content.toString());
-        System.out.println("Loaded component: " + componentName);
-    }
-
-    public String getComponent(String name) {
-        return components.get(name);
+        TEMPLATES_PATH = componentsResourceFolderName;
     }
 
 
@@ -182,8 +94,34 @@ public abstract class BeastEngine {
      * @return The contents of the template as a string.
      */
     String readComponent(String name) {
-        return components.get(name + ".component" + componentExtension());
+        // case it's cached
+        String cmp = components.get(name + ".component" + componentExtension());
+        if (cmp == null) {
+            // Get the ClassLoader to access resources
+            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+
+            // Load the file as an InputStream
+            try (InputStream inputStream = classLoader.getResourceAsStream(name);
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
+
+                // Read the file content
+                StringBuilder content = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    content.append(line).append("\n");
+                }
+                cmp = content.toString();
+                components.put(name + ".component" + componentExtension(), cmp);
+                return cmp;
+
+            } catch (Exception e) {
+                new RuntimeException("Couldn't load component " + name + e);
+                return null;
+            }
+        }
+        return cmp;
     }
+
 
     /**
      * Capitalize the first letter of a string.
