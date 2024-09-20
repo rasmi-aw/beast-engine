@@ -4,6 +4,7 @@ import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -64,29 +65,31 @@ public abstract class BeastEngine {
      * get all components in app
      */
     void getComponents(String componentsFolderName) {
-
         try {
-            URL resourceFolderUrl = BeastEngine.class.getClassLoader().getResource(componentsFolderName);
-            if (resourceFolderUrl == null) {
-                throw new IllegalArgumentException("Resource folder not found: " + "components");
-            }
-            Path resourceFolderPath = Paths.get(resourceFolderUrl.toURI());
+            // Get the resource as a stream
+            try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream(componentsFolderName)) {
+                if (inputStream == null) {
+                    throw new IllegalArgumentException("Resource folder not found: " + componentsFolderName);
+                }
 
-            try (Stream<Path> paths = Files.walk(resourceFolderPath)) {
-                paths.filter(Files::isRegularFile)
-                        .forEach(f -> {
+                // Use a buffer to read the component files from the input stream
+                Files.walk(Paths.get(getClass().getClassLoader().getResource(componentsFolderName).toURI()))
+                        .filter(Files::isRegularFile)
+                        .forEach(path -> {
                             try {
-                                System.out.println(f.getFileName().toString());
-                                components.put(f.getFileName().toString(), Files.readString(f));
+                                System.out.println(path.getFileName().toString());
+                                String content = Files.readString(path);
+                                components.put(path.getFileName().toString(), content);
                             } catch (IOException e) {
-                                throw new RuntimeException(e);
+                                System.err.println("Error reading component file: " + path + " - " + e.getMessage());
                             }
                         });
             }
         } catch (Exception e) {
-            new RuntimeException(e);
+            System.err.println("Error getting components: " + e.getMessage());
         }
     }
+
 
     /**
      * Process a template string with the given context.
