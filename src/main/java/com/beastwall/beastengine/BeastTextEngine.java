@@ -18,7 +18,6 @@ public class BeastTextEngine extends BeastEngine {
         //
         context.keySet().parallelStream().forEach(k -> {
             engine.get().put(k, context.get(k));
-            System.out.println(engine.get().get(k));
         });
         //
         StringBuilder builder = new StringBuilder();
