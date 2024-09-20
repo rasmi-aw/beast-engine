@@ -78,6 +78,7 @@ public abstract class BeastEngine {
             File[] directories = resourcesDir.listFiles(File::isDirectory);
             if (directories != null) {
                 for (File dir : directories) {
+                    System.out.println(dir.getAbsolutePath());
                     // Look for the components folder
                     if ("components".equals(dir.getName())) {
                         // Read all component files in the components directory
