@@ -47,12 +47,12 @@ public class BeastHtmlEngine extends BeastEngine {
 
     @Override
     public String processComponent(String componentName, Map<String, Object> context) throws Exception {
-        String res = context.get(componentName + ".component" + componentExtension()).toString();
+        Object res = context.get(componentName + ".component" + componentExtension());
         if (res == null) {
             res = process(readComponent(componentName), context);
-            components.put(componentName + ".component" + componentExtension(), res);
+            components.put(componentName + ".component" + componentExtension(), (String) res);
         }
-        return res;
+        return (String) res;
     }
 
     // Updated processNode method for bs:if handling
