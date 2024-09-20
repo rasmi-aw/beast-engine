@@ -3,8 +3,7 @@ package com.beastwall.beastengine;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -64,26 +63,48 @@ public abstract class BeastEngine {
     /**
      * get all components in app
      */
-    void getComponents(String componentsFolderName) {
+    void getComponents(String componentsResourceFolderName) {
         try {
-            // Get the resource as a stream
-            try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream(componentsFolderName)) {
-                if (inputStream == null) {
-                    throw new IllegalArgumentException("Resource folder not found: " + componentsFolderName);
-                }
+            // Get the URL of the resources directory
+            URL resourceUrl = getClass().getClassLoader().getResource("");
+            if (resourceUrl == null) {
+                throw new IllegalArgumentException("Resource folder not found.");
+            }
 
-                // Use a buffer to read the component files from the input stream
-                Files.walk(Paths.get(getClass().getClassLoader().getResource(componentsFolderName).toURI()))
-                        .filter(Files::isRegularFile)
-                        .forEach(path -> {
-                            try {
-                                System.out.println(path.getFileName().toString());
-                                String content = Files.readString(path);
-                                components.put(path.getFileName().toString(), content);
-                            } catch (IOException e) {
-                                System.err.println("Error reading component file: " + path + " - " + e.getMessage());
+            // Convert URL to File
+            File resourcesDir = new File(resourceUrl.toURI());
+
+            // List all directories in the resources directory
+            File[] directories = resourcesDir.listFiles(File::isDirectory);
+            if (directories != null) {
+                for (File dir : directories) {
+                    // Look for the components folder
+                    if ("components".equals(dir.getName())) {
+                        // Read all component files in the components directory
+                        File[] componentDirs = dir.listFiles();
+                        if (componentDirs != null) {
+                            for (File componentDir : componentDirs) {
+                                for (File componentFile : componentDir.listFiles()) {
+                                    System.out.println(componentFile.getName());
+                                    try (InputStream is = new FileInputStream(componentFile)) {
+                                        StringBuilder content = new StringBuilder();
+                                        try (BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
+                                            String line;
+                                            while ((line = reader.readLine()) != null) {
+                                                content.append(line).append("\n");
+                                            }
+                                        }
+                                        components.put(componentFile.getName(), content.toString());
+                                    } catch (IOException e) {
+                                        System.err.println("Error reading component file: " + componentFile.getName() + " - " + e.getMessage());
+                                    }
+                                }
                             }
-                        });
+                        }
+                    }
+                }
+            } else {
+                System.err.println("No directories found in resources.");
             }
         } catch (Exception e) {
             System.err.println("Error getting components: " + e.getMessage());
