@@ -7,15 +7,15 @@ import java.io.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /**
  * BeastEngine is an abstract base class for template processing engines.
@@ -26,7 +26,7 @@ import java.util.stream.Stream;
  */
 public abstract class BeastEngine {
     static final String TAG_PREFIX = "bs:";
-    static String TEMPLATES_PATH;
+    static String COMPONENTS_PATH;
     static Pattern INTERPOLATION_PATTERN = Pattern.compile("\\{\\{\\s*(.*?)\\s*\\}\\}");
 
     // Cache for precompiled templates and rendered components
@@ -56,60 +56,95 @@ public abstract class BeastEngine {
      * @param componentsResourceFolderName The path to the components directory.
      */
     public BeastEngine(String componentsResourceFolderName) {
-        TEMPLATES_PATH = componentsResourceFolderName;
-        getComponents(TEMPLATES_PATH);
+        COMPONENTS_PATH = componentsResourceFolderName;
+        getComponents(COMPONENTS_PATH);
     }
 
     /**
      * get all components in app
      */
-    void getComponents(String componentsResourceFolderName) {
+    void getComponents(String componentsResourceFolderName){
         try {
-            // Get the URL of the resources directory
-            URL resourceUrl = getClass().getClassLoader().getResource("");
-            if (resourceUrl == null) {
-                throw new IllegalArgumentException("Resource folder not found.");
-            }
+            // Get a reference to the ClassLoader
+            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+            // Load all resources from the components folder
+            Enumeration<URL> urls = classLoader.getResources("components/");
 
-            // Convert URL to File
-            File resourcesDir = new File(resourceUrl.toURI());
+            while (urls.hasMoreElements()) {
+                URL resource = urls.nextElement();
 
-            // List all directories in the resources directory
-            File[] directories = resourcesDir.listFiles(File::isDirectory);
-            if (directories != null) {
-                for (File dir : directories) {
-                    System.out.println(dir.getAbsolutePath());
-                    // Look for the components folder
-                    if ("components".equals(dir.getName())) {
-                        // Read all component files in the components directory
-                        File[] componentDirs = dir.listFiles();
-                        if (componentDirs != null) {
-                            for (File componentDir : componentDirs) {
-                                for (File componentFile : componentDir.listFiles()) {
-                                    System.out.println(componentFile.getName());
-                                    try (InputStream is = new FileInputStream(componentFile)) {
-                                        StringBuilder content = new StringBuilder();
-                                        try (BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
-                                            String line;
-                                            while ((line = reader.readLine()) != null) {
-                                                content.append(line).append("\n");
-                                            }
-                                        }
-                                        components.put(componentFile.getName(), content.toString());
-                                    } catch (IOException e) {
-                                        System.err.println("Error reading component file: " + componentFile.getName() + " - " + e.getMessage());
-                                    }
-                                }
-                            }
-                        }
+                // Check if the resource is in a JAR or the filesystem
+                if (resource.getProtocol().equals("file")) {
+                    // Resource is on the filesystem (in src/main/resources)
+                    loadComponentsFromDirectory(Paths.get(resource.toURI()).toFile());
+                } else if (resource.getProtocol().equals("jar")) {
+                    // Resource is in a JAR or WAR file
+                    String jarPath = resource.getPath().substring(5, resource.getPath().indexOf("!")); // Extract JAR file path
+                    try (JarFile jarFile = new JarFile(jarPath)) {
+                        loadComponentsFromJar(jarFile);
                     }
                 }
-            } else {
-                System.err.println("No directories found in resources.");
             }
         } catch (Exception e) {
-            System.err.println("Error getting components: " + e.getMessage());
+            System.err.println("Error loading components: " + e.getMessage());
         }
+    }
+
+    // Load components from a directory (dev mode)
+    private void loadComponentsFromDirectory(File directory) {
+        for (File file : directory.listFiles()) {
+            if (file.isDirectory()) {
+                loadComponentsFromDirectory(file); // Recursively load subdirectories
+            } else if (file.getName().endsWith(".component")) {
+                loadComponentFile(file);
+            }
+        }
+    }
+
+    // Load components from a JAR/WAR file (packaged mode)
+    private void loadComponentsFromJar(JarFile jarFile) throws Exception {
+        Enumeration<JarEntry> entries = jarFile.entries();
+        while (entries.hasMoreElements()) {
+            JarEntry entry = entries.nextElement();
+            if (entry.getName().startsWith("components/") && entry.getName().endsWith(".component")) {
+                try (InputStream is = jarFile.getInputStream(entry)) {
+                    loadComponentFileFromStream(entry.getName(), is);
+                }
+            }
+        }
+    }
+
+    // Load a component file from the filesystem
+    private void loadComponentFile(File file) {
+        try (InputStream is = file.toURI().toURL().openStream()) {
+            loadComponentFileFromStream(file.getName(), is);
+        } catch (Exception e) {
+            System.err.println("Error loading component from file: " + file.getName() + " - " + e.getMessage());
+        }
+    }
+
+    // Load a component file from an InputStream
+    private void loadComponentFileFromStream(String fileName, InputStream is) {
+        String componentName = fileName.substring(fileName.lastIndexOf("/") + 1).replace(".component", "");
+
+        // Read the content of the file
+        StringBuilder content = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                content.append(line).append("\n");
+            }
+        } catch (Exception e) {
+            System.err.println("Error reading component content: " + componentName + " - " + e.getMessage());
+        }
+
+        // Store the component in the components map
+        components.put(componentName, content.toString());
+        System.out.println("Loaded component: " + componentName);
+    }
+
+    public String getComponent(String name) {
+        return components.get(name);
     }
 
 
