@@ -76,7 +76,6 @@ public abstract class BeastEngine {
                 paths.filter(Files::isRegularFile)
                         .forEach(f -> {
                             try {
-                                System.out.println(f.getFileName().toString());
                                 components.put(f.getFileName().toString(), Files.readString(f));
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
