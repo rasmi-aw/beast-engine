@@ -101,7 +101,7 @@ public abstract class BeastEngine {
             ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
 
             // Load the file as an InputStream
-            try (InputStream inputStream = classLoader.getResourceAsStream(name);
+            try (InputStream inputStream = classLoader.getResourceAsStream(name + ".component" + componentExtension());
                  BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
 
                 // Read the file content
@@ -138,7 +138,7 @@ public abstract class BeastEngine {
      */
     public void clearCache() {
         resolvedVariables.remove();
-        engine.remove();
+        //engine.remove();
     }
 
     /**
