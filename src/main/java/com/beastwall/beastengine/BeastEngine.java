@@ -10,6 +10,7 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -93,31 +94,20 @@ public abstract class BeastEngine {
      * @param name The name of the template resource to read.
      * @return The contents of the template as a string.
      */
-    String readComponent(String name) {
+    String readComponent(String name) throws IOException {
         // case it's cached
         String cmp = components.get(name + ".component" + componentExtension());
         if (cmp == null) {
-            // Get the ClassLoader to access resources
-            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-
-            // Load the file as an InputStream
-            try (InputStream inputStream = classLoader.getResourceAsStream(name + ".component" + componentExtension());
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-
-                // Read the file content
-                StringBuilder content = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    content.append(line).append("\n");
-                }
-                cmp = content.toString();
-                components.put(name + ".component" + componentExtension(), cmp);
-                return cmp;
-
-            } catch (Exception e) {
-                new RuntimeException("Couldn't load component " + name + e);
-                return null;
+            if (TEMPLATES_PATH == null || TEMPLATES_PATH.trim().isEmpty()) {
+                TEMPLATES_PATH = "components";
             }
+            InputStream inputStream = getClass().getClassLoader().getResourceAsStream(TEMPLATES_PATH + "/" + name + "/" + name + ".component.html");
+
+            if (inputStream == null) {
+                throw new RuntimeException("Couldn't find component: " + name + ".component" + componentExtension());
+            }
+
+            return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
         }
         return cmp;
     }
@@ -326,6 +316,7 @@ public abstract class BeastEngine {
      * @throws ScriptException If an error occurs during script evaluation.
      */
     void processText(String text, Map<String, Object> context, StringBuilder result, String scopeIdentifier) throws ScriptException {
+        System.out.println(text);
         Matcher matcher = INTERPOLATION_PATTERN.matcher(text);
         int lastIndex = 0;
 
