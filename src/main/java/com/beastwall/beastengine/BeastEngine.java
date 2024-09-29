@@ -94,7 +94,7 @@ public abstract class BeastEngine {
      * @param name The name of the template resource to read.
      * @return The contents of the template as a string.
      */
-    String readComponent(String name) throws IOException {
+    protected String readComponent(String name) throws IOException {
         // case it's cached
         String cmp = components.get(name + ".component" + componentExtension());
         if (cmp == null) {
