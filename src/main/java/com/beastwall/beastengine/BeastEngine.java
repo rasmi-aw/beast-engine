@@ -24,16 +24,16 @@ import java.util.stream.Stream;
 /**
  * BeastEngine is an abstract base class for template processing engines.
  * It provides core functionality for template parsing, caching, and evaluation.
- *
+ *u
  * @author github.com/rasmi-aw
  * @author beastwall.com
  */
 public abstract class BeastEngine {
-    static final String TAG_PREFIX = "bs:";
-    static String TEMPLATES_PATH;
+    protected static final String TAG_PREFIX = "bs:";
+    protected static String TEMPLATES_PATH;
     static Pattern INTERPOLATION_PATTERN = Pattern.compile("\\{\\{\\s*(.*?)\\s*\\}\\}");
 
-    static final Map<String, String> components = new ConcurrentHashMap<>();
+    protected static final Map<String, String> components = new ConcurrentHashMap<>();
 
     // Thread-local cache for resolved variables
     final ThreadLocal<Map<String, Object>> resolvedVariables = ThreadLocal.withInitial(HashMap::new);
