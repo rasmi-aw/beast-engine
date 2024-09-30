@@ -1,30 +1,22 @@
 package com.beastwall.beastengine;
 
 import javax.script.ScriptEngine;
-import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /**
  * BeastEngine is an abstract base class for template processing engines.
  * It provides core functionality for template parsing, caching, and evaluation.
- *u
+ * u
+ *
  * @author github.com/rasmi-aw
  * @author beastwall.com
  */
@@ -34,15 +26,6 @@ public abstract class BeastEngine {
     static Pattern INTERPOLATION_PATTERN = Pattern.compile("\\{\\{\\s*(.*?)\\s*\\}\\}");
 
     protected static final Map<String, String> components = new ConcurrentHashMap<>();
-
-    // Thread-local cache for resolved variables
-    final ThreadLocal<Map<String, Object>> resolvedVariables = ThreadLocal.withInitial(HashMap::new);
-
-    // JavaScript engine for expression evaluation
-    final ThreadLocal<ScriptEngine> engine = ThreadLocal.withInitial(() -> {
-        ScriptEngineManager manager = new ScriptEngineManager();
-        return manager.getEngineByName("nashorn");
-    });
 
     /**
      * Default constructor. Initializes the TEMPLATES_PATH.
@@ -69,7 +52,7 @@ public abstract class BeastEngine {
      * @return The processed output string.
      * @throws Exception If an error occurs during processing.
      */
-    public abstract String process(String template, Map<String, Object> context) throws Exception;
+    public abstract String process(String template, Context context) throws Exception;
 
     /**
      * Render a template from a resource file with the given context.
@@ -79,7 +62,7 @@ public abstract class BeastEngine {
      * @return The rendered output string.
      * @throws Exception If an error occurs during rendering.
      */
-    public abstract String processComponent(String componentName, Map<String, Object> context) throws Exception;
+    public abstract String processComponent(String componentName, Context context) throws Exception;
 
     /**
      * Get the file extension for component files.
@@ -106,8 +89,9 @@ public abstract class BeastEngine {
             if (inputStream == null) {
                 throw new RuntimeException("Couldn't find component: " + name + ".component" + componentExtension());
             }
-
-            return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            cmp = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            components.put(name + ".component" + componentExtension(), cmp);
+            return cmp;
         }
         return cmp;
     }
@@ -126,32 +110,11 @@ public abstract class BeastEngine {
     /**
      * Clear the cache and reset the script engine.
      */
-    public void clearCache() {
-        resolvedVariables.remove();
-        //engine.remove();
+    public void clearCache(ScriptEngine engine, Map<String, Object> resolvedVariables) {
+        resolvedVariables = null;
+        engine = null;
     }
 
-    /**
-     * Replace variables in an expression with their values from the context.
-     *
-     * @param expression      The expression containing variables.
-     * @param context         The context containing variable values.
-     * @param scopeIdentifier The identifier for the current scope.
-     * @return The expression with variables replaced by their values.
-     */
-    String replaceVariablesWithValues(String expression, Map<String, Object> context, String scopeIdentifier) {
-        Pattern variablePattern = Pattern.compile("\\b([a-zA-Z_][a-zA-Z0-9_.]*)\\b");
-        Matcher matcher = variablePattern.matcher(expression);
-        StringBuffer result = new StringBuffer();
-
-        while (matcher.find()) {
-            String variableName = matcher.group(1);
-            Object value = resolveVariableCached(variableName, context, scopeIdentifier);
-            matcher.appendReplacement(result, value != null ? value.toString() : "false");
-        }
-        matcher.appendTail(result);
-        return result.toString();
-    }
 
     /**
      * Evaluate a conditional expression within the given context.
@@ -161,10 +124,10 @@ public abstract class BeastEngine {
      * @param scopeIdentifier The identifier for the current scope.
      * @return The result of the condition evaluation.
      */
-    boolean evaluateCondition(String expression, Map<String, Object> context, String scopeIdentifier) {
+    boolean evaluateCondition(String expression, Context context, String scopeIdentifier, Map<String, Object> resolvedVariables, ScriptEngine engine) {
         // Check for simple boolean variable conditions
         if (expression.matches("\\b[a-zA-Z_][a-zA-Z0-9_.]*\\b")) {
-            Object value = resolveNestedVariable(expression, context, scopeIdentifier);
+            Object value = resolveNestedVariable(expression, context, scopeIdentifier, resolvedVariables);
             if (value instanceof Boolean) {
                 return (Boolean) value;
             }
@@ -178,11 +141,11 @@ public abstract class BeastEngine {
         try {
             // Bind variables from the context to the JavaScript engine
             for (Map.Entry<String, Object> entry : context.entrySet()) {
-                engine.get().put(entry.getKey(), entry.getValue());
+                engine.put(entry.getKey(), entry.getValue());
             }
 
             // Evaluate the original expression with Nashorn
-            Object result = engine.get().eval(expression);
+            Object result = engine.eval(expression);
             return Boolean.parseBoolean(result.toString());
         } catch (ScriptException e) {
             throw new RuntimeException("Error evaluating expression: " + expression, e);
@@ -197,9 +160,9 @@ public abstract class BeastEngine {
      * @param scopeIdentifier The identifier for the current scope.
      * @return The resolved value of the variable.
      */
-    Object resolveNestedVariable(String expression, Map<String, Object> context, String scopeIdentifier) {
+    Object resolveNestedVariable(String expression, Context context, String scopeIdentifier, Map<String, Object> resolvedVariables) {
         String[] parts = expression.split("\\.");
-        Object value = resolveVariableCached(parts[0], context, scopeIdentifier);
+        Object value = resolveVariableCached(parts[0], context, scopeIdentifier, resolvedVariables);
 
         for (int i = 1; i < parts.length && value != null; i++) {
             try {
@@ -227,7 +190,7 @@ public abstract class BeastEngine {
      * @param context    The context containing variable values.
      * @return The resolved value of the variable.
      */
-    Object resolveVariable(String expression, Map<String, Object> context) {
+    Object resolveVariable(String expression, Context context) {
         if (!Pattern.compile("^[a-zA-Z_$][a-zA-Z0-9_$]*(\\.[a-zA-Z_$][a-zA-Z0-9_$]*)*$").matcher(expression).matches()) {
             // not a variable
             return null;
@@ -283,10 +246,15 @@ public abstract class BeastEngine {
      * @param scopeIdentifier The identifier for the current scope.
      * @return The resolved and cached value of the variable.
      */
-    Object resolveVariableCached(String expression, Map<String, Object> context, String scopeIdentifier) {
-        Map<String, Object> cache = resolvedVariables.get();
+    Object resolveVariableCached(String expression, Context context, String scopeIdentifier, Map<String, Object> resolvedVariables) {
         String cacheKey = scopeIdentifier + ":" + expression;
-        return cache.computeIfAbsent(cacheKey, k -> resolveVariable(expression, context));
+        Object var = resolvedVariables.get(cacheKey);
+        if (var == null) {
+            var = resolveVariable(expression, context);
+            resolvedVariables.put(cacheKey, var);
+            return var;
+        }
+        return var;
     }
 
     /**
@@ -298,10 +266,10 @@ public abstract class BeastEngine {
      * @return The result of the expression evaluation.
      * @throws ScriptException If an error occurs during script evaluation.
      */
-    Object eval(String expression, Map<String, Object> context, String scopeIdentifier) throws ScriptException {
-        Object resolved = resolveVariableCached(expression, context, scopeIdentifier);
+    Object eval(String expression, Context context, String scopeIdentifier, Map<String, Object> resolvedVariables, ScriptEngine engine) throws ScriptException {
+        Object resolved = resolveVariableCached(expression, context, scopeIdentifier, resolvedVariables);
         if (resolved == null) {
-            resolved = engine.get().eval(expression);
+            resolved = engine.eval(expression);
         }
         return resolved;
     }
@@ -315,15 +283,14 @@ public abstract class BeastEngine {
      * @param scopeIdentifier The identifier for the current scope.
      * @throws ScriptException If an error occurs during script evaluation.
      */
-    void processText(String text, Map<String, Object> context, StringBuilder result, String scopeIdentifier) throws ScriptException {
-        System.out.println(text);
+    void processText(String text, Context context, StringBuilder result, String scopeIdentifier, Map<String, Object> resolvedVariables, ScriptEngine engine) throws ScriptException {
         Matcher matcher = INTERPOLATION_PATTERN.matcher(text);
         int lastIndex = 0;
 
         while (matcher.find()) {
             result.append(text, lastIndex, matcher.start());
             String expression = matcher.group(1).trim();
-            Object resolved = eval(expression, context, scopeIdentifier);
+            Object resolved = eval(expression, context, scopeIdentifier, resolvedVariables, engine);
             result.append(resolved != null ? resolved.toString() : "");
             lastIndex = matcher.end();
         }

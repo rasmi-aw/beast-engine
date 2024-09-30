@@ -1,5 +1,8 @@
 package com.beastwall.beastengine;
 
+import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
+import java.util.HashMap;
 import java.util.Map;
 
 public class BeastTextEngine extends BeastEngine {
@@ -14,21 +17,22 @@ public class BeastTextEngine extends BeastEngine {
     }
 
     @Override
-    public String process(String template, Map<String, Object> context) throws Exception {
+    public String process(String template, Context context) throws Exception {
         //
-        context.keySet().parallelStream().forEach(k -> {
-            engine.get().put(k, context.get(k));
+        ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
+        context.keySet().forEach(k -> {
+            engine.put(k, context.get(k));
         });
         //
         StringBuilder builder = new StringBuilder();
-        processText(template, context, builder, null);
+        processText(template, context, builder, null, new HashMap<>(), engine);
         String output = builder.toString();
-        clearCache();
+
         return output;
     }
 
     @Override
-    public String processComponent(String componentName, Map<String, Object> context) throws Exception {
+    public String processComponent(String componentName, Context context) throws Exception {
         return process(readComponent(componentName), context);
     }
 
