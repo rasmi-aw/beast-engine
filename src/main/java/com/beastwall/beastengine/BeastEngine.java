@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
  * @author beastwall.com
  */
 public abstract class BeastEngine {
-    protected static final String TAG_PREFIX = "bs:";
+    public static final String TAG_PREFIX = "bs:";
     protected static String TEMPLATES_PATH;
     static Pattern INTERPOLATION_PATTERN = Pattern.compile("\\{\\{\\s*(.*?)\\s*\\}\\}");
 
