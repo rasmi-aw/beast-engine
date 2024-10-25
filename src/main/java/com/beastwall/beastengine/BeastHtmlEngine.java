@@ -71,7 +71,7 @@ public class BeastHtmlEngine extends BeastEngine {
 
                 case TAG_PREFIX + "router":
                     String route = ((String) context.get(TAG_PREFIX + "path")).trim();
-                    element.childNodes().stream().filter(child -> child.nameIs("route") && route.equalsIgnoreCase(child.attr("path").trim())).forEachOrdered(child -> {
+                    element.childNodes().stream().filter(child -> child.nameIs("route") && route.equalsIgnoreCase(child.attr("path").trim())).findFirst().ifPresent(child -> {
                         //
                         try {
                             element.replaceWith(renderComponent(child.attr("component").trim(), context, scopeIdentifier, child.attributes().hasKey("static"), resolvedVariables, engine));
