@@ -25,7 +25,7 @@ public class BeastTextEngine extends BeastEngine {
         });
         //
         StringBuilder builder = new StringBuilder();
-        processText(template, context, builder, null, new HashMap<>(), engine);
+        processText(template, context, null, new HashMap<>(), engine);
         String output = builder.toString();
 
         return output;
@@ -33,7 +33,7 @@ public class BeastTextEngine extends BeastEngine {
 
     @Override
     public String processComponent(String componentName, Context context) throws Exception {
-        return process(readComponent(componentName), context);
+        return process(((String) readComponent(componentName)), context);
     }
 
     @Override

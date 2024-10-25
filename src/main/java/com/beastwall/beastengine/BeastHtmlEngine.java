@@ -2,18 +2,28 @@ package com.beastwall.beastengine;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.*;
+import org.jsoup.parser.Parser;
+import org.jsoup.select.Elements;
 
-import javax.script.ScriptEngine;
-import javax.script.ScriptEngineManager;
-import javax.script.ScriptException;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import javax.script.*;
+import java.lang.reflect.Method;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class BeastHtmlEngine extends BeastEngine {
+    private static final Map<String, CompiledScript> EXPRESSION_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, Method> METHOD_CACHE = new ConcurrentHashMap<>();
 
-    // Constructor initializing the ScriptEngine for Nashorn
+    private static final Pattern SIMPLE_VARIABLE_PATTERN = Pattern.compile("^[a-zA-Z_$][a-zA-Z0-9_$]*(\\.[a-zA-Z_$][a-zA-Z0-9_$]*)*$");
+
+    private static final ThreadLocal<ScriptEngine> scriptEngineThreadLocal = ThreadLocal.withInitial(() ->
+            new ScriptEngineManager().getEngineByName("nashorn")
+    );
+
+    private static final Parser PARSER = Parser.htmlParser();
+
     public BeastHtmlEngine() {
         super();
     }
@@ -24,208 +34,293 @@ public class BeastHtmlEngine extends BeastEngine {
 
     @Override
     public String process(String template, Context context) throws Exception {
-        // Check if the template is precompiled and cached
-        String output;
-        try {
-            Document doc = Jsoup.parse(template);
-            StringBuilder result = new StringBuilder();
-            ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
-            context.keySet().forEach(k -> {
-                engine.put(k, context.get(k));
-            });
-            processNode(doc.child(0), context, result, "", new HashMap<>(), engine);
-            output = result.toString();
-        } catch (Exception e) {
-            throw new RuntimeException("Error rendering template", e);
-        }
-        return output;
+        Document doc = Jsoup.parse(template, "", PARSER);
+        ScriptEngine engine = scriptEngineThreadLocal.get();
+        Map<String, Object> resolvedVariables = new HashMap<>(context.size() * 2);
+
+        // Pre-bind context variables
+        context.forEach((key, value) -> {
+            engine.put(key, value);
+            resolvedVariables.put(key, value);
+        });
+
+        processNode(doc, context, "", resolvedVariables, engine);
+
+
+        return doc.toString().replaceAll("bs:", "");
     }
 
-    @Override
-    public String processComponent(String componentName, Context context) throws Exception {
-        String res = components.get("static:" + context.getLocale().getLanguage() + ":" + componentName + ".component" + componentExtension());
-        if (res != null)
-            return res;
-        // case the components is not static
-        res = process(readComponent(componentName), context);
-
-        return res;
-    }
-
-    // Updated processNode method for bs:if handling
-    private void processNode(Node node, Context context, StringBuilder result, String scopeIdentifier, Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
-        // process attributes
-
-        // process node
+    private void processNode(Node node, Context context, String scopeIdentifier,
+                             Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
         if (node instanceof TextNode) {
-            processText(((TextNode) node).text(), context, result, scopeIdentifier, resolvedVariables, engine);
+            processTextNode((TextNode) node, context, scopeIdentifier, resolvedVariables, engine);
         } else if (node instanceof Element) {
             Element element = (Element) node;
             String tagName = element.tagName();
 
             switch (tagName) {
                 case TAG_PREFIX + "var":
-                    Arrays.stream(element.ownText().split(";")).forEachOrdered(expression -> {
-                        String[] ex = expression.split("=");
-                        String var = ex[0].trim();
-                        String value = ex[1].trim();
-                        Object val;
-                        try {
-                            val = engine.eval(value);
-                            context.put(var, val);
-                            engine.put(var, val);
-                        } catch (ScriptException e) {
-                            context.put(var, value);
-                            engine.put(var, value);
-                        }
-                    });
-
+                    processVar(element, context, engine);
+                    element.remove();
                     break;
                 case TAG_PREFIX + "if":
-                    String condition = element.attr("condition");
-                    if (evaluateCondition(condition, context, scopeIdentifier, resolvedVariables, engine)) {
-                        processChildren(element, context, result, scopeIdentifier, resolvedVariables, engine);
-                    }
+                    processIf(element, context, scopeIdentifier, resolvedVariables, engine);
                     break;
                 case TAG_PREFIX + "switch":
-                    processSwitch(element, context, result, scopeIdentifier, resolvedVariables, engine);
+                    processSwitch(element, context, scopeIdentifier, resolvedVariables, engine);
                     break;
                 case TAG_PREFIX + "for":
-                    processForLoop(element, context, result, scopeIdentifier, resolvedVariables, engine);
+                    processFor(element, context, scopeIdentifier, resolvedVariables, engine);
                     break;
                 case TAG_PREFIX + "repeat":
-                    processRepeat(element, context, result, scopeIdentifier, resolvedVariables, engine);
+                    processRepeat(element, context, scopeIdentifier, resolvedVariables, engine);
                     break;
                 case TAG_PREFIX + "component":
-                    String componentName = element.attr("name");
-                    result.append(renderComponent(componentName, context, scopeIdentifier, element.attributes().hasKey("static"), resolvedVariables, engine));
+                    processComponent(element, context, scopeIdentifier, resolvedVariables, engine);
                     break;
                 default:
-                    result.append("<").append(tagName);
-                    for (Attribute attr : element.attributes()) {
-                        if (attr.getKey().startsWith(TAG_PREFIX)) {
-                            result.append(" ").append(attr.getKey().replace(TAG_PREFIX, "")).append("=\"").append(eval(attr.getValue(), context, scopeIdentifier, resolvedVariables, engine)).append("\"");
-                        } else
-                            result.append(" ").append(attr.getKey()).append("=\"").append(attr.getValue()).append("\"");
-                    }
-                    result.append(">");
-                    processChildren(element, context, result, scopeIdentifier, resolvedVariables, engine);
-                    result.append("</").append(tagName).append(">");
+                    processAttributes(element, context, scopeIdentifier, resolvedVariables, engine);
+                    processChildren(element, context, scopeIdentifier, resolvedVariables, engine);
             }
         }
     }
 
-    private void processChildren(Element element, Context context, StringBuilder result, String scopeIdentifier, Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
-        for (Node child : element.childNodes()) {
-            processNode(child, context, result, scopeIdentifier, resolvedVariables, engine);
+    private void processTextNode(TextNode textNode, Context context, String scopeIdentifier,
+                                 Map<String, Object> resolvedVariables, ScriptEngine engine) throws ScriptException {
+        String text = textNode.text();
+        if (!text.contains("{{")) {
+            return;
+        }
+
+        Matcher matcher = INTERPOLATION_PATTERN.matcher(text);
+        if (!matcher.find()) {
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder(text.length());
+        do {
+            String expression = matcher.group(1).trim();
+            Object result;
+
+            if (SIMPLE_VARIABLE_PATTERN.matcher(expression).matches()) {
+                result = resolveVariableFast(expression, context, scopeIdentifier, resolvedVariables);
+            } else {
+                CompiledScript compiled = getCompiledScript(expression, engine);
+                result = compiled.eval();
+            }
+
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(
+                    result != null ? result.toString() : ""));
+        } while (matcher.find());
+
+        matcher.appendTail(sb);
+        textNode.text(sb.toString());
+    }
+
+    private void processVar(Element element, Context context, ScriptEngine engine) throws ScriptException {
+        String[] expressions = element.ownText().split(";");
+        for (String expression : expressions) {
+            String[] parts = expression.split("=", 2);
+            if (parts.length == 2) {
+                String varName = parts[0].trim();
+                String varValue = parts[1].trim();
+                Object value = engine.eval(varValue);
+                context.put(varName, value);
+                engine.put(varName, value);
+            }
         }
     }
 
-    private void processSwitch(Element element, Context context, StringBuilder result, String scopeIdentifier, Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
+    private void processIf(Element element, Context context, String scopeIdentifier,
+                           Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
+        String condition = element.attr("condition");
+        if (evaluateCondition(condition, context, scopeIdentifier, resolvedVariables, engine)) {
+            processChildren(element, context, scopeIdentifier, resolvedVariables, engine);
+            Elements children = element.children();
+            children.forEach(element::before);
+        }
+        element.remove();
+    }
+
+    private void processSwitch(Element element, Context context, String scopeIdentifier,
+                               Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
         String switchVar = element.attr("var");
-        Object switchValue = resolveVariableCached(switchVar, context, scopeIdentifier, resolvedVariables);
-        if (switchValue == null) {
-            throw new RuntimeException("Switch value cannot be null");
+        Object switchValue = resolveVariableFast(switchVar, context, scopeIdentifier, resolvedVariables);
+
+        Element matchingCase = element.getElementsByTag(TAG_PREFIX + "case").stream()
+                .filter(caseE -> Objects.equals(
+                        resolveVariableFast(caseE.attr("match"), context, scopeIdentifier, resolvedVariables),
+                        switchValue))
+                .findFirst()
+                .orElse(element.getElementsByTag(TAG_PREFIX + "default").first());
+
+        if (matchingCase != null) {
+            processChildren(matchingCase, context, scopeIdentifier, resolvedVariables, engine);
+            matchingCase.childNodes().forEach(element::before);
         }
 
-        boolean matched = false;
-        List<Element> caseElements = element.getElementsByTag(TAG_PREFIX + "case");
-        for (Element caseElement : caseElements) {
-            String matchAttr = caseElement.attr("match");
-            if (matchAttr.equals(switchValue.toString())) {
-                processChildren(caseElement, context, result, scopeIdentifier, resolvedVariables, engine);
-                matched = true;
-                break;
-            }
-        }
-
-        if (!matched) {
-            Element defaultElement = element.getElementsByTag(TAG_PREFIX + "default").first();
-            if (defaultElement != null) {
-                processChildren(defaultElement, context, result, scopeIdentifier, resolvedVariables, engine);
-            }
-        }
+        element.remove();
     }
 
-    private void processForLoop(Element element, Context context, StringBuilder result, String scopeIdentifier, Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
+    private void processFor(Element element, Context context, String scopeIdentifier,
+                            Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
         String itemName = element.attr("item");
         String listName = element.attr("in");
-        Object listObj = resolveVariableCached(listName, context, scopeIdentifier, resolvedVariables);
+        Collection<?> collection = (Collection<?>) resolveVariableFast(listName, context, scopeIdentifier, resolvedVariables);
 
-        if (listObj instanceof List) {
-            List<?> items = (List<?>) listObj;
-            for (int i = 0; i < items.size(); i++) {
-                Object item = items.get(i);
-                Context loopContext = new Context(context);
-                loopContext.put(itemName, item);
-                engine.put(itemName, item);
-                String loopScopeIdentifier = scopeIdentifier + "_" + listName + "_" + i;
-                processChildren(element, loopContext, result, loopScopeIdentifier, resolvedVariables, engine);
-            }
+        int index = 0;
+        for (Object item : collection) {
+            resolvedVariables.put(itemName, item);
+            engine.put(itemName, item);
+            String loopScopeIdentifier = scopeIdentifier + "_" + listName + "_" + index;
+
+            Element clone = element.clone();
+            processChildren(clone, context, loopScopeIdentifier, resolvedVariables, engine);
+            clone.childNodes().forEach(element::before);
+            index++;
         }
+
+        element.remove();
     }
 
-    private void processRepeat(Element element, Context context, StringBuilder result, String scopeIdentifier, Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
-        // Get the number of times to repeat
-        Object timesVal = element.attr("times");
+    private void processRepeat(Element element, Context context, String scopeIdentifier,
+                               Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
+        String timesAttr = element.attr("times");
         int times;
+
         try {
-            times = Integer.parseInt(((String) timesVal));
-        } catch (Exception e) {
-            try {
-                timesVal = resolveVariableCached(((String) timesVal), context, scopeIdentifier, resolvedVariables);
-                times = ((Integer) timesVal);
-            } catch (Exception ex) {
-                throw new RuntimeException("error parsing variable: " + element.attr("times"), ex);
+            times = Integer.parseInt(timesAttr);
+        } catch (NumberFormatException e) {
+            Object resolvedTimes = resolveVariableFast(timesAttr, context, scopeIdentifier, resolvedVariables);
+            if (resolvedTimes instanceof Number) {
+                times = ((Number) resolvedTimes).intValue();
+            } else {
+                throw new RuntimeException("Invalid 'times' attribute for bs:repeat: " + timesAttr);
             }
         }
-        // Repeat the content 'times' number of times
+
         for (int i = 0; i < times; i++) {
-            // Pass a unique scope identifier for each iteration
-            processChildren(element, context, result, scopeIdentifier + "_" + i, resolvedVariables, engine);
+            Element clone = element.clone();
+            processChildren(clone, context, scopeIdentifier + "_" + i, resolvedVariables, engine);
+            clone.childNodes().forEach(element::before);
+        }
+
+        element.remove();
+    }
+
+    private void processComponent(Element element, Context context, String scopeIdentifier,
+                                  Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
+        String componentName = element.attr("name");
+        boolean isStatic = element.hasAttr("static");
+
+        Element componentContent = renderComponent(componentName, context, scopeIdentifier, isStatic, resolvedVariables, engine);
+        element.empty();
+        element.appendChildren(componentContent.childNodes());
+        element.unwrap();
+    }
+
+    private void processAttributes(Element element, Context context, String scopeIdentifier,
+                                   Map<String, Object> resolvedVariables, ScriptEngine engine) throws ScriptException {
+        for (Attribute attr : element.attributes()) {
+            String attrKey = attr.getKey();
+            String attrValue = attr.getValue();
+
+            if (attrKey.startsWith(TAG_PREFIX)) {
+                String newAttrKey = attrKey.substring(TAG_PREFIX.length());
+                Object evaluatedValue = eval(attrValue, context, scopeIdentifier, resolvedVariables, engine);
+                element.removeAttr(attrKey);
+                element.attr(newAttrKey, evaluatedValue != null ? evaluatedValue.toString() : "");
+            } else if (attrValue.contains("{{")) {
+                Object evaluatedValue = eval(attrValue, context, scopeIdentifier, resolvedVariables, engine);
+                element.attr(attrKey, evaluatedValue != null ? evaluatedValue.toString() : "");
+            }
         }
     }
 
-
-    private String renderComponent(String componentName, Context context, String scopeIdentifier, boolean isStatic, Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
-        String result = null;
-        String componentFullName = "static:" + context.getLocale().getLanguage() + ":" + componentName + ".component" + componentExtension();
-        if (isStatic) {
-            result = components.get(componentFullName);
+    private void processChildren(Element element, Context context, String scopeIdentifier,
+                                 Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
+        for (Node child : element.childNodes()) {
+            processNode(child, context, scopeIdentifier, resolvedVariables, engine);
         }
-        //
+    }
+
+    private Element renderComponent(String componentName, Context context, String scopeIdentifier,
+                                    boolean isStatic, Map<String, Object> resolvedVariables,
+                                    ScriptEngine engine) throws Exception {
+        String componentFullName = "static:" + context.getLocale().getLanguage() + ":"
+                + componentName + ".component" + componentExtension();
+        Element result = isStatic ? (Element) components.get(componentFullName) : null;
+
         if (result == null) {
-            try {
-                String componentTemplate = readComponent(componentName);
-                Document componentDoc = Jsoup.parse(componentTemplate);
-                StringBuilder componentResult = new StringBuilder();
-                for (Node child : componentDoc.body().childNodes()) {
-                    processNode(child, context, componentResult, scopeIdentifier + "_" + componentResult, resolvedVariables, engine);
-                }
-                result = componentResult.toString();
-                if (isStatic)
-                    components.put(componentFullName, result);
-                return result;
-            } catch (Exception e) {
-                throw new RuntimeException("Error rendering component: " + components, e);
+            result = (Element) readComponent(componentName);
+            processNode(result, context, scopeIdentifier + "_" + componentName, resolvedVariables, engine);
+
+            if (isStatic) {
+                components.put(componentFullName, result);
             }
         }
         return result;
     }
 
-    private boolean evaluateExpression(String expression) {
-        try {
-            ScriptEngine engine = new ScriptEngineManager().getEngineByName("nashorn");
-            if (engine == null) {
-                throw new RuntimeException("Nashorn JavaScript engine not found");
+    private CompiledScript getCompiledScript(String expression, ScriptEngine engine) throws ScriptException {
+        return EXPRESSION_CACHE.computeIfAbsent(expression, exp -> {
+            try {
+                return ((Compilable) engine).compile(exp);
+            } catch (ScriptException e) {
+                throw new RuntimeException("Failed to compile expression: " + exp, e);
             }
-            Object result = engine.eval(expression);
-            return Boolean.parseBoolean(result.toString());
-        } catch (ScriptException e) {
-            throw new RuntimeException("Error evaluating expression: " + expression, e);
-        }
+        });
     }
 
+    private Object resolveVariableFast(String expression, Context context, String scopeIdentifier,
+                                       Map<String, Object> resolvedVariables) {
+        String cacheKey = scopeIdentifier + ":" + expression;
+        return resolvedVariables.computeIfAbsent(cacheKey, k -> {
+            try {
+                String[] parts = expression.split("\\.");
+                Object value = context.get(parts[0]);
+
+                for (int i = 1; i < parts.length && value != null; i++) {
+                    value = getPropertyValue(value, parts[i]);
+                }
+                return value;
+            } catch (Exception e) {
+                return null;
+            }
+        });
+    }
+
+    private Object getPropertyValue(Object obj, String property) throws Exception {
+        String cacheKey = obj.getClass().getName() + ":" + property;
+        Method method = METHOD_CACHE.get(cacheKey);
+
+        if (method == null) {
+            Class<?> cls = obj.getClass();
+            String getter = "get" + Character.toUpperCase(property.charAt(0)) + property.substring(1);
+
+            try {
+                method = cls.getMethod(getter);
+            } catch (NoSuchMethodException e) {
+                if (property.startsWith("is")) {
+                    method = cls.getMethod(property);
+                } else {
+                    getter = "is" + Character.toUpperCase(property.charAt(0)) + property.substring(1);
+                    method = cls.getMethod(getter);
+                }
+            }
+
+            METHOD_CACHE.put(cacheKey, method);
+        }
+
+        return method.invoke(obj);
+    }
+
+    @Override
+    public String processComponent(String componentName, Context context) throws Exception {
+        ScriptEngine engine = scriptEngineThreadLocal.get();
+        context.forEach(engine::put);
+        return renderComponent(componentName, context, "", false, new HashMap<>(), engine).outerHtml();
+    }
 
     @Override
     public String componentExtension() {

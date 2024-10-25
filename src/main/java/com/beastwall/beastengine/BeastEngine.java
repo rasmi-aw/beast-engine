@@ -1,5 +1,11 @@
 package com.beastwall.beastengine;
 
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.nodes.Node;
+import org.jsoup.parser.Parser;
+
 import javax.script.ScriptEngine;
 import javax.script.ScriptException;
 import java.io.IOException;
@@ -21,11 +27,11 @@ import java.util.regex.Pattern;
  * @author beastwall.com
  */
 public abstract class BeastEngine {
-    public static final String TAG_PREFIX = "bs:";
+    protected static final String TAG_PREFIX = "bs:";
     protected static String TEMPLATES_PATH;
     static Pattern INTERPOLATION_PATTERN = Pattern.compile("\\{\\{\\s*(.*?)\\s*\\}\\}");
 
-    protected static final Map<String, String> components = new ConcurrentHashMap<>();
+    protected static final Map<String, Object> components = new ConcurrentHashMap<>();
 
     /**
      * Default constructor. Initializes the TEMPLATES_PATH.
@@ -77,14 +83,45 @@ public abstract class BeastEngine {
      * @param name The name of the template resource to read.
      * @return The contents of the template as a string.
      */
-    protected String readComponent(String name) throws IOException {
+    protected Object readComponent(String name) throws IOException {
         // case it's cached
-        String cmp = components.get(name + ".component" + componentExtension());
+        Object cmp = components.get(name + ".component" + componentExtension());
         if (cmp == null) {
             if (TEMPLATES_PATH == null || TEMPLATES_PATH.trim().isEmpty()) {
-                TEMPLATES_PATH = "components";
+                TEMPLATES_PATH = "app";
             }
-            InputStream inputStream = getClass().getClassLoader().getResourceAsStream(TEMPLATES_PATH + "/" + name + "/" + name + ".component" + componentExtension());
+            String path = name.trim().equals("app") ? TEMPLATES_PATH + "/" + name + ".component.html" : TEMPLATES_PATH + "/" + name + "/" + name + ".component" + componentExtension();
+            InputStream inputStream = getClass().getClassLoader().getResourceAsStream(path);
+
+            if (inputStream == null) {
+                throw new RuntimeException("Couldn't find component: " + name + ".component" + componentExtension());
+            }
+            //
+            cmp = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            if (componentExtension().equals(".html"))
+                cmp = Jsoup.parse((String) cmp, "", Parser.xmlParser());
+
+            components.put(name + ".component" + componentExtension(), cmp);
+            return cmp;
+        }
+        return cmp;
+    }
+
+    /**
+     * Read a template from a resource file.
+     *
+     * @param name The name of the template resource to read.
+     * @return The contents of the template as a string.
+     */
+    protected String readStrComponent(String name) throws IOException {
+        // case it's cached
+        String cmp = ((String) components.get(name + ".component" + componentExtension()));
+        if (cmp == null) {
+            if (TEMPLATES_PATH == null || TEMPLATES_PATH.trim().isEmpty()) {
+                TEMPLATES_PATH = "app";
+            }
+            String path = name.trim().equals("app") ? TEMPLATES_PATH + "/" + name + ".component.html" : TEMPLATES_PATH + "/" + name + "/" + name + ".component" + componentExtension();
+            InputStream inputStream = getClass().getClassLoader().getResourceAsStream(path);
 
             if (inputStream == null) {
                 throw new RuntimeException("Couldn't find component: " + name + ".component" + componentExtension());
@@ -139,11 +176,6 @@ public abstract class BeastEngine {
 
         // For more complex conditions, use the script engine
         try {
-            // Bind variables from the context to the JavaScript engine
-            for (Map.Entry<String, Object> entry : context.entrySet()) {
-                engine.put(entry.getKey(), entry.getValue());
-            }
-
             // Evaluate the original expression with Nashorn
             Object result = engine.eval(expression);
             return Boolean.parseBoolean(result.toString());
@@ -247,6 +279,31 @@ public abstract class BeastEngine {
      * @return The resolved and cached value of the variable.
      */
     Object resolveVariableCached(String expression, Context context, String scopeIdentifier, Map<String, Object> resolvedVariables) {
+
+        if (expression.equals("true"))
+            return true;
+        else if (expression.equals("false"))
+            return false;
+        // Try to parse it into different primitive or wrapper types
+        try {
+            return Integer.parseInt(expression);
+        } catch (NumberFormatException ignored) {
+        }
+
+        try {
+            return Long.parseLong(expression);
+        } catch (NumberFormatException ignored) {
+        }
+
+        try {
+            return Double.parseDouble(expression);
+        } catch (NumberFormatException ignored) {
+        }
+
+        try {
+            return Float.parseFloat(expression);
+        } catch (NumberFormatException ignored) {
+        }
         String cacheKey = scopeIdentifier + ":" + expression;
         Object var = resolvedVariables.get(cacheKey);
         if (var == null) {
@@ -268,6 +325,7 @@ public abstract class BeastEngine {
      */
     Object eval(String expression, Context context, String scopeIdentifier, Map<String, Object> resolvedVariables, ScriptEngine engine) throws ScriptException {
         Object resolved = resolveVariableCached(expression, context, scopeIdentifier, resolvedVariables);
+        engine.put(scopeIdentifier, resolved);
         if (resolved == null) {
             resolved = engine.eval(expression);
         }
@@ -277,25 +335,32 @@ public abstract class BeastEngine {
     /**
      * Process text by interpolating variables and expressions.
      *
-     * @param text            The text to process.
+     * @param content         The text to process or an element that contains the text.
      * @param context         The context containing variables for interpolation.
-     * @param result          The StringBuilder to append the processed text to.
      * @param scopeIdentifier The identifier for the current scope.
      * @throws ScriptException If an error occurs during script evaluation.
      */
-    void processText(String text, Context context, StringBuilder result, String scopeIdentifier, Map<String, Object> resolvedVariables, ScriptEngine engine) throws ScriptException {
+    String processText(Object content, Context context, String scopeIdentifier, Map<String, Object> resolvedVariables, ScriptEngine engine) throws ScriptException {
+        String text;
+        if (content instanceof Element)
+            text = ((Element) content).text();
+        else text = content.toString();
         Matcher matcher = INTERPOLATION_PATTERN.matcher(text);
         int lastIndex = 0;
-
+        StringBuilder result = new StringBuilder();
         while (matcher.find()) {
             result.append(text, lastIndex, matcher.start());
             String expression = matcher.group(1).trim();
             Object resolved = eval(expression, context, scopeIdentifier, resolvedVariables, engine);
+            System.out.println(resolved);
             result.append(resolved != null ? resolved.toString() : "");
             lastIndex = matcher.end();
         }
-
         result.append(text, lastIndex, text.length());
+        if (content instanceof Element)
+            ((Element) content).text(result.toString());
+
+        return result.toString();
     }
 
 }
