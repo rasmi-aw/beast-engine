@@ -78,6 +78,17 @@ public class BeastHtmlEngine extends BeastEngine {
                 case TAG_PREFIX + "component":
                     processComponent(element, context, scopeIdentifier, resolvedVariables, engine);
                     break;
+                case TAG_PREFIX + "router":
+                    String route = ((String) context.get(TAG_PREFIX + "path")).trim();
+                    element.childNodes().stream().filter(child -> child.nameIs("route") && route.equalsIgnoreCase(child.attr("path").trim())).forEachOrdered(child -> {
+                        //
+                        try {
+                            element.replaceWith(renderComponent(child.attr("component").trim(), context, scopeIdentifier, child.attributes().hasKey("static"), resolvedVariables, engine));
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+                    break;
                 default:
                     processAttributes(element, context, scopeIdentifier, resolvedVariables, engine);
                     processChildren(element, context, scopeIdentifier, resolvedVariables, engine);
