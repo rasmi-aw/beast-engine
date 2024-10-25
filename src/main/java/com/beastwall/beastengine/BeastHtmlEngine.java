@@ -13,14 +13,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class BeastHtmlEngine extends BeastEngine {
-    private static final Map<String, CompiledScript> EXPRESSION_CACHE = new ConcurrentHashMap<>();
-    private static final Map<String, Method> METHOD_CACHE = new ConcurrentHashMap<>();
-
-    private static final Pattern SIMPLE_VARIABLE_PATTERN = Pattern.compile("^[a-zA-Z_$][a-zA-Z0-9_$]*(\\.[a-zA-Z_$][a-zA-Z0-9_$]*)*$");
-
-    private static final ThreadLocal<ScriptEngine> scriptEngineThreadLocal = ThreadLocal.withInitial(() ->
-            new ScriptEngineManager().getEngineByName("nashorn")
-    );
 
     private static final Parser PARSER = Parser.htmlParser();
 
@@ -177,17 +169,13 @@ public class BeastHtmlEngine extends BeastEngine {
         String itemName = element.attr("item");
         String listName = element.attr("in");
 
-        // Debug logging
-        System.out.println("Processing for loop with item=" + itemName + ", in=" + listName);
-        System.out.println("Context contains: " + context.keySet());
-
         // First try to resolve the collection directly from context
         Object collectionObj = context.get(listName);
 
         // If not found directly, try resolving through the variable resolver
         if (collectionObj == null) {
             collectionObj = resolveVariableFast(listName, context, scopeIdentifier, resolvedVariables);
-            System.out.println("Resolved collection through resolver: " + collectionObj);
+           // System.out.println("Resolved collection through resolver: " + collectionObj);
         }
 
         // Validate collection
@@ -288,14 +276,18 @@ public class BeastHtmlEngine extends BeastEngine {
             String attrKey = attr.getKey();
             String attrValue = attr.getValue();
 
-            if (attrKey.startsWith(TAG_PREFIX)) {
-                String newAttrKey = attrKey.substring(TAG_PREFIX.length());
-                Object evaluatedValue = eval(attrValue, context, scopeIdentifier, resolvedVariables, engine);
-                element.removeAttr(attrKey);
-                element.attr(newAttrKey, evaluatedValue != null ? evaluatedValue.toString() : "");
-            } else if (attrValue.contains("{{")) {
-                Object evaluatedValue = eval(attrValue, context, scopeIdentifier, resolvedVariables, engine);
-                element.attr(attrKey, evaluatedValue != null ? evaluatedValue.toString() : "");
+            try {
+                if (attrKey.startsWith(TAG_PREFIX)) {
+                    String newAttrKey = attrKey.substring(TAG_PREFIX.length());
+                    Object evaluatedValue = eval(attrValue, context, scopeIdentifier, resolvedVariables, engine);
+                    element.removeAttr(attrKey);
+                    element.attr(newAttrKey, evaluatedValue != null ? evaluatedValue.toString() : "");
+                } else if (attrValue.contains("{{")) {
+                    Object evaluatedValue = eval(attrValue, context, scopeIdentifier, resolvedVariables, engine);
+                    element.attr(attrKey, evaluatedValue != null ? evaluatedValue.toString() : "");
+                }
+            } catch (Exception e) {
+                //System.out.println("error here in eval");
             }
         }
     }
@@ -379,7 +371,8 @@ public class BeastHtmlEngine extends BeastEngine {
     }
 
     @Override
-    public String processComponent(String componentName, Context context, ScriptEngine engine) throws Exception {
+    public String processComponent(String componentName, Context context) throws Exception {
+        ScriptEngine engine = scriptEngineThreadLocal.get();
         context.forEach(engine::put);
         return renderComponent(componentName, context, "", false, new HashMap<>(), engine).outerHtml();
     }

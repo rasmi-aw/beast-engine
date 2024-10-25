@@ -6,7 +6,9 @@ import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
 import org.jsoup.parser.Parser;
 
+import javax.script.CompiledScript;
 import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -30,6 +32,15 @@ public abstract class BeastEngine {
     protected static final String TAG_PREFIX = "bs:";
     protected static String TEMPLATES_PATH;
     static Pattern INTERPOLATION_PATTERN = Pattern.compile("\\{\\{\\s*(.*?)\\s*\\}\\}");
+
+    static final Map<String, CompiledScript> EXPRESSION_CACHE = new ConcurrentHashMap<>();
+    static final Map<String, Method> METHOD_CACHE = new ConcurrentHashMap<>();
+
+    static final Pattern SIMPLE_VARIABLE_PATTERN = Pattern.compile("^[a-zA-Z_$][a-zA-Z0-9_$]*(\\.[a-zA-Z_$][a-zA-Z0-9_$]*)*$");
+
+    static final ThreadLocal<ScriptEngine> scriptEngineThreadLocal = ThreadLocal.withInitial(() ->
+            new ScriptEngineManager().getEngineByName("nashorn")
+    );
 
     protected static final Map<String, Object> components = new ConcurrentHashMap<>();
 
@@ -68,7 +79,7 @@ public abstract class BeastEngine {
      * @return The rendered output string.
      * @throws Exception If an error occurs during rendering.
      */
-    public abstract String processComponent(String componentName, Context context, ScriptEngine engine) throws Exception;
+    public abstract String processComponent(String componentName, Context context) throws Exception;
 
     /**
      * Get the file extension for component files.
@@ -352,7 +363,6 @@ public abstract class BeastEngine {
             result.append(text, lastIndex, matcher.start());
             String expression = matcher.group(1).trim();
             Object resolved = eval(expression, context, scopeIdentifier, resolvedVariables, engine);
-            System.out.println(resolved);
             result.append(resolved != null ? resolved.toString() : "");
             lastIndex = matcher.end();
         }
