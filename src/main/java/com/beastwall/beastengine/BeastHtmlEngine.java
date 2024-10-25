@@ -45,8 +45,6 @@ public class BeastHtmlEngine extends BeastEngine {
         });
 
         processNode(doc, context, "", resolvedVariables, engine);
-
-
         return doc.toString().replaceAll("bs:", "");
     }
 
@@ -78,6 +76,7 @@ public class BeastHtmlEngine extends BeastEngine {
                 case TAG_PREFIX + "component":
                     processComponent(element, context, scopeIdentifier, resolvedVariables, engine);
                     break;
+
                 case TAG_PREFIX + "router":
                     String route = ((String) context.get(TAG_PREFIX + "path")).trim();
                     element.childNodes().stream().filter(child -> child.nameIs("route") && route.equalsIgnoreCase(child.attr("path").trim())).forEachOrdered(child -> {
@@ -177,18 +176,71 @@ public class BeastHtmlEngine extends BeastEngine {
                             Map<String, Object> resolvedVariables, ScriptEngine engine) throws Exception {
         String itemName = element.attr("item");
         String listName = element.attr("in");
-        Collection<?> collection = (Collection<?>) resolveVariableFast(listName, context, scopeIdentifier, resolvedVariables);
 
-        int index = 0;
-        for (Object item : collection) {
-            resolvedVariables.put(itemName, item);
-            engine.put(itemName, item);
-            String loopScopeIdentifier = scopeIdentifier + "_" + listName + "_" + index;
+        // Debug logging
+        System.out.println("Processing for loop with item=" + itemName + ", in=" + listName);
+        System.out.println("Context contains: " + context.keySet());
 
-            Element clone = element.clone();
-            processChildren(clone, context, loopScopeIdentifier, resolvedVariables, engine);
-            clone.childNodes().forEach(element::before);
-            index++;
+        // First try to resolve the collection directly from context
+        Object collectionObj = context.get(listName);
+
+        // If not found directly, try resolving through the variable resolver
+        if (collectionObj == null) {
+            collectionObj = resolveVariableFast(listName, context, scopeIdentifier, resolvedVariables);
+            System.out.println("Resolved collection through resolver: " + collectionObj);
+        }
+
+        // Validate collection
+        if (collectionObj == null) {
+            throw new RuntimeException("Collection '" + listName + "' not found in context");
+        }
+
+        Collection<?> collection;
+        if (collectionObj instanceof Collection) {
+            collection = (Collection<?>) collectionObj;
+        } else if (collectionObj.getClass().isArray()) {
+            collection = Arrays.asList((Object[]) collectionObj);
+        } else {
+            throw new RuntimeException("Value for '" + listName + "' is not a collection or array");
+        }
+
+        // Store the original value of the item variable if it exists
+        Object originalValue = context.get(itemName);
+
+        try {
+            int index = 0;
+            for (Object item : collection) {
+                // Update both context and engine with the current item
+                context.put(itemName, item);
+                engine.put(itemName, item);
+
+                // Add additional loop variables
+                String indexVar = itemName + "_index";
+                context.put(indexVar, index);
+                engine.put(indexVar, index);
+
+                // Create a unique scope identifier for this iteration
+                String loopScopeIdentifier = scopeIdentifier + "_" + listName + "_" + index;
+
+                // Clear any cached values for this item in resolvedVariables
+                resolvedVariables.remove(loopScopeIdentifier + ":" + itemName);
+
+                // Clone and process the element
+                Element clone = element.clone();
+                processChildren(clone, context, loopScopeIdentifier, resolvedVariables, engine);
+                clone.childNodes().forEach(element::before);
+
+                index++;
+            }
+        } finally {
+            // Restore the original value or remove the temporary variable
+            if (originalValue != null) {
+                context.put(itemName, originalValue);
+                engine.put(itemName, originalValue);
+            } else {
+                context.remove(itemName);
+                engine.put(itemName, null);
+            }
         }
 
         element.remove();
