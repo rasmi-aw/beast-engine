@@ -379,8 +379,7 @@ public class BeastHtmlEngine extends BeastEngine {
     }
 
     @Override
-    public String processComponent(String componentName, Context context) throws Exception {
-        ScriptEngine engine = scriptEngineThreadLocal.get();
+    public String processComponent(String componentName, Context context, ScriptEngine engine) throws Exception {
         context.forEach(engine::put);
         return renderComponent(componentName, context, "", false, new HashMap<>(), engine).outerHtml();
     }

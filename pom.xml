@@ -6,7 +6,7 @@
 
     <groupId>com.beastwall</groupId>
     <artifactId>beast-engine</artifactId>
-    <version>0.0.59</version>
+    <version>0.0.60</version>
 
     <dependencies>
         <!--Parse html code-->

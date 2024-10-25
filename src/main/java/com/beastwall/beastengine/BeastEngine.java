@@ -68,7 +68,7 @@ public abstract class BeastEngine {
      * @return The rendered output string.
      * @throws Exception If an error occurs during rendering.
      */
-    public abstract String processComponent(String componentName, Context context) throws Exception;
+    public abstract String processComponent(String componentName, Context context, ScriptEngine engine) throws Exception;
 
     /**
      * Get the file extension for component files.
