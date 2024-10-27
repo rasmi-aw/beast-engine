@@ -8,9 +8,7 @@ import org.jsoup.select.Elements;
 import javax.script.*;
 import java.lang.reflect.Method;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class BeastHtmlEngine extends BeastEngine {
 
@@ -37,7 +35,9 @@ public class BeastHtmlEngine extends BeastEngine {
         });
 
         processNode(doc, context, "", resolvedVariables, engine);
-        return doc.toString().replaceAll("bs:", "");
+        String result = doc.toString().replaceAll("bs:", "");
+        clearCache();
+        return result;
     }
 
     private void processNode(Node node, Context context, String scopeIdentifier,
@@ -175,7 +175,7 @@ public class BeastHtmlEngine extends BeastEngine {
         // If not found directly, try resolving through the variable resolver
         if (collectionObj == null) {
             collectionObj = resolveVariableFast(listName, context, scopeIdentifier, resolvedVariables);
-           // System.out.println("Resolved collection through resolver: " + collectionObj);
+            // System.out.println("Resolved collection through resolver: " + collectionObj);
         }
 
         // Validate collection
@@ -307,9 +307,8 @@ public class BeastHtmlEngine extends BeastEngine {
         Element result = isStatic ? (Element) components.get(componentFullName) : null;
 
         if (result == null) {
-            result = (Element) readComponent(componentName);
+            result = ((Element) readComponent(componentName)).clone();
             processNode(result, context, scopeIdentifier + "_" + componentName, resolvedVariables, engine);
-
             if (isStatic) {
                 components.put(componentFullName, result);
             }
@@ -318,7 +317,7 @@ public class BeastHtmlEngine extends BeastEngine {
     }
 
     private CompiledScript getCompiledScript(String expression, ScriptEngine engine) throws ScriptException {
-        return EXPRESSION_CACHE.computeIfAbsent(expression, exp -> {
+        return expressionCacheThreadLocal.get().computeIfAbsent(expression, exp -> {
             try {
                 return ((Compilable) engine).compile(exp);
             } catch (ScriptException e) {
@@ -347,7 +346,7 @@ public class BeastHtmlEngine extends BeastEngine {
 
     private Object getPropertyValue(Object obj, String property) throws Exception {
         String cacheKey = obj.getClass().getName() + ":" + property;
-        Method method = METHOD_CACHE.get(cacheKey);
+        Method method = methodCacheThreadLocal.get().get(cacheKey);
 
         if (method == null) {
             Class<?> cls = obj.getClass();
@@ -364,7 +363,7 @@ public class BeastHtmlEngine extends BeastEngine {
                 }
             }
 
-            METHOD_CACHE.put(cacheKey, method);
+            methodCacheThreadLocal.get().put(cacheKey, method);
         }
 
         return method.invoke(obj);
@@ -374,7 +373,9 @@ public class BeastHtmlEngine extends BeastEngine {
     public String processComponent(String componentName, Context context) throws Exception {
         ScriptEngine engine = scriptEngineThreadLocal.get();
         context.forEach(engine::put);
-        return renderComponent(componentName, context, "", false, new HashMap<>(), engine).outerHtml();
+        String result = renderComponent(componentName, context, "", false, new HashMap<>(), engine).outerHtml();
+        clearCache();
+        return result;
     }
 
     @Override

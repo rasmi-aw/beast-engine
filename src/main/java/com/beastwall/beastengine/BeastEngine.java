@@ -15,6 +15,7 @@ import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -33,14 +34,15 @@ public abstract class BeastEngine {
     protected static String TEMPLATES_PATH;
     static Pattern INTERPOLATION_PATTERN = Pattern.compile("\\{\\{\\s*(.*?)\\s*\\}\\}");
 
-    static final Map<String, CompiledScript> EXPRESSION_CACHE = new ConcurrentHashMap<>();
-    static final Map<String, Method> METHOD_CACHE = new ConcurrentHashMap<>();
-
     static final Pattern SIMPLE_VARIABLE_PATTERN = Pattern.compile("^[a-zA-Z_$][a-zA-Z0-9_$]*(\\.[a-zA-Z_$][a-zA-Z0-9_$]*)*$");
 
     static final ThreadLocal<ScriptEngine> scriptEngineThreadLocal = ThreadLocal.withInitial(() ->
             new ScriptEngineManager().getEngineByName("nashorn")
     );
+
+    static final ThreadLocal<HashMap<String, CompiledScript>> expressionCacheThreadLocal = ThreadLocal.withInitial(HashMap::new);
+
+    static final ThreadLocal<HashMap<String, Method>> methodCacheThreadLocal = ThreadLocal.withInitial(HashMap::new);
 
     protected static final Map<String, Object> components = new ConcurrentHashMap<>();
 
@@ -110,7 +112,7 @@ public abstract class BeastEngine {
             //
             cmp = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
             if (componentExtension().equals(".html"))
-                cmp = Jsoup.parse((String) cmp, "", Parser.xmlParser());
+                cmp = Jsoup.parse((String) cmp, "", Parser.htmlParser());
 
             components.put(name + ".component" + componentExtension(), cmp);
             return cmp;
@@ -371,6 +373,12 @@ public abstract class BeastEngine {
             ((Element) content).text(result.toString());
 
         return result.toString();
+    }
+
+    void clearCache() {
+        scriptEngineThreadLocal.remove();
+        expressionCacheThreadLocal.remove();
+        methodCacheThreadLocal.remove();
     }
 
 }
