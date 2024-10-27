@@ -42,6 +42,8 @@ public abstract class BeastEngine {
 
     static final ThreadLocal<HashMap<String, Method>> methodCacheThreadLocal = ThreadLocal.withInitial(HashMap::new);
 
+    static final ThreadLocal<StringBuilder> stringBuilderPool = ThreadLocal.withInitial(() ->
+            new StringBuilder(1024));
     protected static final Map<String, Object> components = new ConcurrentHashMap<>();
 
     /**
@@ -371,6 +373,8 @@ public abstract class BeastEngine {
     void clearCache() {
         expressionCacheThreadLocal.get().clear();
         methodCacheThreadLocal.get().clear();
+        stringBuilderPool.get().setLength(0);
+        stringBuilderPool.get().setLength(1024);
         //scriptEngineThreadLocal.get().createBindings().clear();
     }
 

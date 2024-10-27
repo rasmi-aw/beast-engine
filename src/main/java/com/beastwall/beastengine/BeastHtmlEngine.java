@@ -87,38 +87,57 @@ public class BeastHtmlEngine extends BeastEngine {
         }
     }
 
+    // Optimize text node processing
     private void processTextNode(TextNode textNode, Context context, String scopeIdentifier,
                                  Map<String, Object> resolvedVariables, ScriptEngine engine) throws ScriptException {
         String text = textNode.text();
         if (!text.contains("{{")) {
-            return;
+            return; // Early exit for non-template text
         }
+
+        StringBuilder sb = stringBuilderPool.get();
+        sb.setLength(0); // Reset StringBuilder
 
         Matcher matcher = INTERPOLATION_PATTERN.matcher(text);
-        if (!matcher.find()) {
-            return;
-        }
+        int lastPos = 0;
 
-        StringBuilder sb = new StringBuilder(text.length());
-        do {
+        while (matcher.find()) {
+            // Append text before match
+            sb.append(text, lastPos, matcher.start());
+
             String expression = matcher.group(1).trim();
             Object result;
 
+            // Fast path for simple variables
             if (SIMPLE_VARIABLE_PATTERN.matcher(expression).matches()) {
                 result = resolveVariableFast(expression, context, scopeIdentifier, resolvedVariables);
             } else {
-                CompiledScript compiled = getCompiledScript(expression, engine);
+                // Use global cache for compiled scripts
+                CompiledScript compiled = expressionCacheThreadLocal.get().computeIfAbsent(expression,
+                        exp -> {
+                            try {
+                                return ((Compilable) engine).compile(exp);
+                            } catch (ScriptException e) {
+                                throw new RuntimeException("Failed to compile: " + exp, e);
+                            }
+                        });
                 result = compiled.eval();
             }
 
-            matcher.appendReplacement(sb, Matcher.quoteReplacement(
-                    result != null ? result.toString() : ""));
-        } while (matcher.find());
+            if (result != null) {
+                sb.append(result);
+            }
 
-        matcher.appendTail(sb);
+            lastPos = matcher.end();
+        }
+
+        // Append remaining text
+        if (lastPos < text.length()) {
+            sb.append(text, lastPos, text.length());
+        }
+
         textNode.text(sb.toString());
     }
-
     private void processVar(Element element, Context context, ScriptEngine engine) throws ScriptException {
         String[] expressions = element.ownText().split(";");
         for (String expression : expressions) {
