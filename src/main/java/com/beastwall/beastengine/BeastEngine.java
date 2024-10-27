@@ -6,10 +6,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
 import org.jsoup.parser.Parser;
 
-import javax.script.CompiledScript;
-import javax.script.ScriptEngine;
-import javax.script.ScriptEngineManager;
-import javax.script.ScriptException;
+import javax.script.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
@@ -20,6 +17,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * BeastEngine is an abstract base class for template processing engines.
@@ -155,14 +153,6 @@ public abstract class BeastEngine {
      */
     String capitalize(String s) {
         return s.substring(0, 1).toUpperCase() + s.substring(1);
-    }
-
-    /**
-     * Clear the cache and reset the script engine.
-     */
-    public void clearCache(ScriptEngine engine, Map<String, Object> resolvedVariables) {
-        resolvedVariables = null;
-        engine = null;
     }
 
 
@@ -375,10 +365,13 @@ public abstract class BeastEngine {
         return result.toString();
     }
 
+    /**
+     * Clear the cache and reset the script engine.
+     */
     void clearCache() {
-        scriptEngineThreadLocal.remove();
-        expressionCacheThreadLocal.remove();
-        methodCacheThreadLocal.remove();
+        expressionCacheThreadLocal.get().clear();
+        methodCacheThreadLocal.get().clear();
+        //scriptEngineThreadLocal.get().createBindings().clear();
     }
 
 }
